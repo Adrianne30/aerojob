@@ -72,13 +72,11 @@ export function normalizeWebsite(url) {
 
 export function getImageUrl(path) {
   if (!path) return "";
-  // Always serve uploaded files from the backend
-  const backendBase = "https://api.aerojob.space";
+  const backendBase = "https://aerojob.space";
   return /^https?:\/\//i.test(path)
     ? path
     : `${backendBase}${path.startsWith("/") ? path : "/" + path}`;
 }
-
 
 /* -------------------- API WRAPPERS -------------------- */
 export const healthAPI = { ping: () => unwrap(http.get("/health")) };

@@ -198,16 +198,6 @@ export default function Jobs() {
               </select>
             </div>
           </div>
-
-          {/* Location */}
-          <div>
-            <input
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Location"
-              className="w-full py-2.5 rounded-xl border px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
         </div>
 
         {hasFilters && (
