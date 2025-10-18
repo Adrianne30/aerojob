@@ -73,12 +73,11 @@ export function normalizeWebsite(url) {
 export function getImageUrl(path) {
   if (!path) return "";
   // Automatically use same domain as frontend (works for both local + prod)
-  const backendBase = window.location.origin; 
+  const backendBase = window.location.origin;
   return /^https?:\/\//i.test(path)
     ? path
     : `${backendBase}${path.startsWith("/") ? path : "/" + path}`;
 }
-
 
 /* -------------------- API WRAPPERS -------------------- */
 export const healthAPI = { ping: () => unwrap(http.get("/health")) };
@@ -159,6 +158,12 @@ export const profileAPI = {
 };
 
 export const adminAPI = { getStats: () => unwrap(http.get("/admin/stats")) };
+
+/* -------------------- STUDENT API -------------------- */
+export const studentAPI = {
+  // Fetch student dashboard stats
+  getStats: () => unwrap(http.get("/student/stats")),
+};
 
 export const analyticsAPI = {
   logSearch: (term) => http.post("/analytics/search", { term }).catch(() => {}),

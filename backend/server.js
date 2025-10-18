@@ -700,6 +700,38 @@ api.post(
   })
 );
 
+/* ------------------------------- STUDENT STATS ------------------------------ */
+api.get(
+  '/student/stats',
+  requireAuth,
+  asyncH(async (req, res) => {
+    try {
+      const user = await User.findById(req.userId);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      // Available jobs
+      const availableJobs = await Job.countDocuments({ isApproved: true, status: 'active' });
+
+      // Jobs viewed (search logs)
+      const viewed = await SearchLog.countDocuments({ user: req.userId, role: /student/i });
+
+      // Companies
+      const companies = await Company.countDocuments();
+
+      res.json({
+        success: true,
+        availableJobs,
+        jobsViewed: viewed,
+        companies,
+      });
+    } catch (err) {
+      console.error('Student stats error:', err);
+      res.status(500).json({ success: false, error: 'Server error' });
+    }
+  })
+);
+
+
 /* ------------------------------- Mount API routes --------------------------- */
 app.use('/api', api);
 

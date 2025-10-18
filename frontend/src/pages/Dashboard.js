@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { adminAPI, usersAPI, surveysAPI } from '../utils/api';
+import { adminAPI, usersAPI, surveysAPI, studentAPI } from '../utils/api';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -63,6 +63,13 @@ const initialStats = {
 export default function Dashboard() {
   const { user, isAdmin, isStudentOrAlumni } = useAuth();
   const [stats, setStats] = useState(initialStats);
+  const [studentStats, setStudentStats] = useState({
+  availableJobs: 0,
+  jobsViewed: 0,
+  applications: 0,
+  companies: 0,
+});
+
   const [loading, setLoading] = useState(true);
 
   // === Student Surveys modal state (no impact to admin) ===
@@ -85,17 +92,20 @@ export default function Dashboard() {
 
   /* -------------------- Fetch counts + users (build charts client-side) -------------------- */
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        setLoading(true);
+  let mounted = true;
+
+  (async () => {
+    try {
+      setLoading(true);
+
+      if (isAdmin()) {
+        // 🧠 ADMIN DASHBOARD
         const [s, users] = await Promise.all([
           adminAPI.getStats().catch(() => null),
           usersAPI.list().catch(() => []),
         ]);
         if (!mounted) return;
 
-        // Base stats from /admin/stats (if available)
         const nextStats = {
           totalJobs: Number(s?.totalJobs || 0),
           totalCompanies: Number(s?.totalCompanies || 0),
@@ -104,15 +114,17 @@ export default function Dashboard() {
           newUsers: Number(s?.newUsers || 0),
           roleCounts: s?.roleCounts || { students: 0, alumni: 0, admins: 0 },
           topSearches: Array.isArray(s?.topSearches) ? s.topSearches : [],
-          studentsByCourse: Array.isArray(s?.studentsByCourse) ? s.studentsByCourse : [], // ✅
+          studentsByCourse: Array.isArray(s?.studentsByCourse)
+            ? s.studentsByCourse
+            : [],
         };
 
-        // If roleCounts missing/zero, compute from /users
+        // 🧮 Compute fallback role counts if not included in API
         const computedRoleCounts = (() => {
           const counts = { admins: 0, students: 0, alumni: 0 };
           if (Array.isArray(users)) {
             for (const u of users) {
-              const role = (u?.role || u?.userType || u?.type || '').toLowerCase();
+              const role = (u?.role || u?.userType || '').toLowerCase();
               if (role === 'admin') counts.admins += 1;
               else if (role === 'student') counts.students += 1;
               else if (role === 'alumni') counts.alumni += 1;
@@ -121,7 +133,7 @@ export default function Dashboard() {
           return counts;
         })();
 
-        // If studentsByCourse missing, compute from /users (students only)
+        // 🧮 Compute fallback students-by-course if missing
         const computedStudentsByCourse = (() => {
           const map = {};
           if (Array.isArray(users)) {
@@ -129,7 +141,7 @@ export default function Dashboard() {
               const role = (u?.role || u?.userType || '').toLowerCase();
               if (role !== 'student') continue;
               const course =
-                (u?.course || u?.program || u?.degree || 'Unknown') || 'Unknown';
+                u?.course || u?.program || u?.degree || 'Unknown';
               map[course] = (map[course] || 0) + 1;
             }
           }
@@ -139,26 +151,47 @@ export default function Dashboard() {
             .slice(0, 15);
         })();
 
-        const hasServerRoleData = Object.values(nextStats.roleCounts || {}).some(v => Number(v) > 0);
-        nextStats.roleCounts = hasServerRoleData ? nextStats.roleCounts : computedRoleCounts;
+        nextStats.roleCounts =
+          Object.values(nextStats.roleCounts || {}).some((v) => Number(v) > 0)
+            ? nextStats.roleCounts
+            : computedRoleCounts;
 
-        const hasServerCourseData = Array.isArray(nextStats.studentsByCourse) && nextStats.studentsByCourse.length > 0;
-        nextStats.studentsByCourse = hasServerCourseData ? nextStats.studentsByCourse : computedStudentsByCourse;
+        nextStats.studentsByCourse =
+          Array.isArray(nextStats.studentsByCourse) &&
+          nextStats.studentsByCourse.length > 0
+            ? nextStats.studentsByCourse
+            : computedStudentsByCourse;
 
         if (!nextStats.totalUsers && Array.isArray(users)) {
           nextStats.totalUsers = users.length;
         }
 
         setStats(nextStats);
-      } catch (e) {
-        console.error('Failed to load dashboard:', e?.message || e);
-        setStats(initialStats);
-      } finally {
-        if (mounted) setLoading(false);
+      } else if (isStudentOrAlumni()) {
+        // 🧠 STUDENT / ALUMNI DASHBOARD
+        const s = await studentAPI.getStats().catch(() => null);
+        if (!mounted) return;
+
+        setStudentStats({
+          availableJobs: s?.availableJobs || 0,
+          jobsViewed: s?.jobsViewed || 0,
+          applications: s?.applications || 0,
+          companies: s?.companies || 0,
+        });
       }
-    })();
-    return () => { mounted = false; };
-  }, []);
+    } catch (e) {
+      console.error('Failed to load dashboard:', e);
+      if (isAdmin()) setStats(initialStats);
+    } finally {
+      if (mounted) setLoading(false);
+    }
+  })();
+
+  return () => {
+    mounted = false;
+  };
+}, []);
+
 
   /* -------------------- Helpers: open/close surveys modal -------------------- */
   const openSurveysModal = async () => {
@@ -200,7 +233,7 @@ export default function Dashboard() {
 
   const hasRoleData = Object.values(stats.roleCounts || {}).some(v => Number(v) > 0);
   const hasSearchData = Array.isArray(stats.topSearches) && stats.topSearches.length > 0;
-  const hasCourseData = Array.isArray(stats.studentsByCourse) && stats.studentsByCourse.length > 0; // ✅
+  const hasCourseData = Array.isArray(stats.studentsByCourse) && stats.studentsByCourse.length > 0;
 
   const roleData = {
     labels: ['Students', 'Alumni', 'Admins'],

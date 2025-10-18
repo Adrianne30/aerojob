@@ -1,6 +1,6 @@
 // src/pages/Jobs.js
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { jobsAPI, normalizeWebsite, absoluteUrl, getImageUrl } from "../utils/api";
+import { jobsAPI, normalizeWebsite, getImageUrl } from "../utils/api";
 import {
   Search,
   Briefcase,
@@ -49,7 +49,6 @@ const PlaceholderLogo =
   );
 
 function CompanyLogo({ url, alt }) {
-  // use helper to always get correct backend image URL
   const [src, setSrc] = useState(getImageUrl(url) || PlaceholderLogo);
 
   return (
@@ -66,7 +65,8 @@ function CompanyLogo({ url, alt }) {
 /* ---------- analytics helper --------- */
 async function logSearchTerm(term) {
   try {
-    const base = import.meta?.env?.VITE_API_BASE_URL || process.env.REACT_APP_API_BASE_URL;
+    const base =
+      import.meta?.env?.VITE_API_BASE_URL || process.env.REACT_APP_API_BASE_URL;
     if (!base) return;
     await fetch(`${base.replace(/\/$/, "")}/api/analytics/search`, {
       method: "POST",
@@ -112,24 +112,9 @@ export default function Jobs() {
     }
   };
 
-  // first load
+  // first load (only fetch jobs, no categories)
   useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        const [jobsRes, catsRes] = await Promise.all([
-          jobsAPI.list({ approvedOnly: true, status: "active" }),
-          jobsAPI.listCategories().catch(() => []),
-        ]);
-        setJobs(Array.isArray(jobsRes) ? jobsRes : []);
-        setCategories(Array.isArray(catsRes) ? catsRes : []);
-      } catch (e) {
-        console.error(e);
-        toast.error("Failed to load jobs");
-      } finally {
-        setLoading(false);
-      }
-    })();
+    fetchJobs({ approvedOnly: true, status: "active" });
   }, []);
 
   // refetch when filters change
@@ -198,6 +183,16 @@ export default function Jobs() {
               </select>
             </div>
           </div>
+
+          {/* Location */}
+          <div>
+            <input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Location"
+              className="w-full py-2.5 rounded-xl border px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
         </div>
 
         {hasFilters && (
@@ -237,7 +232,7 @@ export default function Jobs() {
 
 /* --- Components --- */
 function JobCard({ job }) {
-  const logoUrl = job?.company?.logoUrl ? absoluteUrl(job.company.logoUrl) : "";
+  const logoUrl = job?.company?.logoUrl ? getImageUrl(job.company.logoUrl) : "";
 
   return (
     <article className="group bg-white border rounded-2xl shadow-sm p-5 hover:shadow-md transition">
