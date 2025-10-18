@@ -1,6 +1,6 @@
 // src/pages/Jobs.js
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { jobsAPI, normalizeWebsite, absoluteUrl } from "../utils/api"; 
+import { jobsAPI, normalizeWebsite, absoluteUrl, getImageUrl } from "../utils/api";
 import {
   Search,
   Briefcase,
@@ -49,20 +49,8 @@ const PlaceholderLogo =
   );
 
 function CompanyLogo({ url, alt }) {
-  const backendBase = "https://aerojob-backend-production.up.railway.app"; // ✅ live backend
-  let fixedUrl = url || "";
-
-  // 🧠 auto-replace old localhost links
-  if (fixedUrl.includes("localhost:5000")) {
-    fixedUrl = fixedUrl.replace("http://localhost:5000", backendBase);
-  }
-
-  // prepend backend if relative path
-  if (fixedUrl && !fixedUrl.startsWith("http")) {
-    fixedUrl = `${backendBase}${fixedUrl.startsWith("/") ? "" : "/"}${fixedUrl}`;
-  }
-
-  const [src, setSrc] = useState(fixedUrl || PlaceholderLogo);
+  // use helper to always get correct backend image URL
+  const [src, setSrc] = useState(getImageUrl(url) || PlaceholderLogo);
 
   return (
     <img

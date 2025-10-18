@@ -4,7 +4,7 @@ import axios from "axios";
 const API_BASE_RESOLVED =
   import.meta?.env?.VITE_API_BASE_URL ||
   process.env.REACT_APP_API_BASE_URL ||
-  "https://api.aerojob.space";
+  "https://aerojob.space";
 
 const API_ROOT = `${API_BASE_RESOLVED.replace(/\/+$/, "")}/api`;
 
@@ -69,6 +69,16 @@ export function normalizeWebsite(url) {
   if (!url) return "";
   return /^https?:\/\//i.test(url) ? url : `https://${url}`;
 }
+
+export function getImageUrl(path) {
+  if (!path) return "";
+  // Always serve uploaded files from the backend
+  const backendBase = "https://api.aerojob.space";
+  return /^https?:\/\//i.test(path)
+    ? path
+    : `${backendBase}${path.startsWith("/") ? path : "/" + path}`;
+}
+
 
 /* -------------------- API WRAPPERS -------------------- */
 export const healthAPI = { ping: () => unwrap(http.get("/health")) };
