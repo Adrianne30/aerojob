@@ -72,11 +72,13 @@ export function normalizeWebsite(url) {
 
 export function getImageUrl(path) {
   if (!path) return "";
-  const backendBase = "https://aerojob.space";
+  // Automatically use same domain as frontend (works for both local + prod)
+  const backendBase = window.location.origin; 
   return /^https?:\/\//i.test(path)
     ? path
     : `${backendBase}${path.startsWith("/") ? path : "/" + path}`;
 }
+
 
 /* -------------------- API WRAPPERS -------------------- */
 export const healthAPI = { ping: () => unwrap(http.get("/health")) };
