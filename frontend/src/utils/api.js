@@ -4,7 +4,7 @@ import axios from "axios";
 const API_BASE_RESOLVED =
   import.meta?.env?.VITE_API_BASE_URL ||
   process.env.REACT_APP_API_BASE_URL ||
-  "https://aerojob.space"; // ✅ Main domain (frontend + backend served together)
+  "https://api.aerojob.space";
 
 const API_ROOT = `${API_BASE_RESOLVED.replace(/\/+$/, "")}/api`;
 
