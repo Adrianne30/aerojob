@@ -1,0 +1,17 @@
+{
+  "name": "aerojob-production",
+  "version": "1.0.0",
+  "description": "AeroJob full-stack deployment",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "postinstall": "npm install --prefix frontend && npm run build --prefix frontend"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^8.19.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
