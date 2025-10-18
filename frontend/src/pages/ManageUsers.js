@@ -49,7 +49,6 @@ export default function ManageUsers() {
   const [status, setStatus] = useState('');    
   const [selectedCourse, setSelectedCourse] = useState('all'); 
   const [courseOptions, setCourseOptions] = useState([]);     
-
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE_OPTIONS[0]);
 
