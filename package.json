@@ -8,6 +8,7 @@
     "postinstall": "npm install --prefix frontend && npm run build --prefix frontend"
   },
   "dependencies": {
+    "dotenv": "^17.2.3",
     "express": "^4.18.2",
     "mongoose": "^8.19.1"
   },
