@@ -123,12 +123,6 @@ const Footer = () => {
               >
                 Terms of Service
               </a>
-              <a
-                href="#"
-                className="text-gray-400 hover:text-white text-sm transition-colors duration-200"
-              >
-                Contact
-              </a>
             </div>
           </div>
         </div>
