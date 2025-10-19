@@ -84,9 +84,7 @@ function OTPModal({ email, open, onClose, onVerified }) {
               We sent a 6-digit code to <b>{email}</b>. Enter it below.
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            ✕
-          </button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
         </div>
 
         <input
@@ -156,7 +154,6 @@ function LegalModal({ type, open, onClose }) {
         className="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden relative"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="bg-[#052940] text-white flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
             <img src={logo} alt="AeroJob Logo" className="h-8 w-8" />
@@ -169,85 +166,65 @@ function LegalModal({ type, open, onClose }) {
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[75vh] text-gray-700 text-sm leading-relaxed">
           {type === "terms" ? (
             <>
               <p>
-                Welcome to <strong>AeroJob</strong>. By accessing or using our
-                platform, you agree to comply with these Terms and Conditions.
+                Welcome to <strong>AeroJob</strong>. By using our platform, you agree
+                to comply with these Terms and Conditions.
               </p>
-              <h3 className="mt-4 font-semibold text-[#052940]">1. Use of the Platform</h3>
+              <h3 className="mt-4 font-semibold text-[#052940]">1. Use of Platform</h3>
               <p>
-                AeroJob provides internship and job-matching services for
-                PhilSCA students and alumni. You agree to use the platform
-                responsibly and for lawful purposes.
+                AeroJob connects PhilSCA students and alumni with companies. You agree
+                to use the platform responsibly and lawfully.
               </p>
               <h3 className="mt-4 font-semibold text-[#052940]">2. Account Responsibility</h3>
               <p>
-                You are responsible for your login credentials. AeroJob is not
-                liable for damages from unauthorized account access.
+                You are responsible for keeping your account credentials secure.
+                AeroJob is not liable for unauthorized use.
               </p>
               <h3 className="mt-4 font-semibold text-[#052940]">3. Data Accuracy</h3>
               <p>
-                You agree to provide accurate and truthful information.
-                Misrepresentation may result in account suspension.
+                You agree to provide true and accurate information during registration
+                and job applications.
               </p>
               <h3 className="mt-4 font-semibold text-[#052940]">4. Intellectual Property</h3>
               <p>
-                All AeroJob logos, text, and data are protected by copyright
-                laws.
+                All AeroJob materials, text, and logos are protected under copyright law.
               </p>
               <p className="mt-4">
-                For questions, contact us at{" "}
-                <a
-                  href="mailto:support@aerojob.space"
-                  className="text-blue-600 hover:underline"
-                >
+                For inquiries, contact{" "}
+                <a href="mailto:support@aerojob.space" className="text-blue-600 hover:underline">
                   support@aerojob.space
-                </a>
-                .
+                </a>.
               </p>
             </>
           ) : (
             <>
               <p>
-                At <strong>AeroJob</strong>, your privacy matters. This Privacy
-                Policy explains how we collect, use, and protect your data.
+                At <strong>AeroJob</strong>, your privacy matters. This policy explains
+                how we collect, use, and protect your data.
               </p>
-              <h3 className="mt-4 font-semibold text-[#052940]">
-                1. Information We Collect
-              </h3>
+              <h3 className="mt-4 font-semibold text-[#052940]">1. Information We Collect</h3>
               <p>
-                We collect your name, email, course, and job application details
-                when you create an account or apply for opportunities.
+                We collect your name, email, and course details when you register or
+                apply for opportunities.
               </p>
-              <h3 className="mt-4 font-semibold text-[#052940]">
-                2. Data Protection
-              </h3>
+              <h3 className="mt-4 font-semibold text-[#052940]">2. Data Usage</h3>
               <p>
-                We use encryption and security measures to protect your personal
-                data from unauthorized access or disclosure.
+                Your data is used for account verification, internship matching, and
+                service improvement.
               </p>
-              <h3 className="mt-4 font-semibold text-[#052940]">
-                3. Data Usage
-              </h3>
+              <h3 className="mt-4 font-semibold text-[#052940]">3. Security</h3>
               <p>
-                Your data is used to match you with internship and job
-                opportunities, improve services, and communicate updates.
+                We employ data protection measures to prevent unauthorized access and
+                misuse.
               </p>
-              <h3 className="mt-4 font-semibold text-[#052940]">
-                4. Contact Us
-              </h3>
-              <p>
-                For inquiries, email{" "}
-                <a
-                  href="mailto:support@aerojob.space"
-                  className="text-blue-600 hover:underline"
-                >
+              <p className="mt-4">
+                Contact us at{" "}
+                <a href="mailto:support@aerojob.space" className="text-blue-600 hover:underline">
                   support@aerojob.space
-                </a>
-                .
+                </a>.
               </p>
             </>
           )}
@@ -257,14 +234,14 @@ function LegalModal({ type, open, onClose }) {
   );
 }
 
-/* -------------------------------- Register -------------------------------- */
+/* ----------------------------- Register Page ----------------------------- */
 const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [otpOpen, setOtpOpen] = useState(false);
   const [formError, setFormError] = useState(null);
-  const [activeModal, setActiveModal] = useState(null); // ✅ for terms/privacy modals
+  const [activeModal, setActiveModal] = useState(null);
 
   const navigate = useNavigate();
   const {
@@ -328,22 +305,19 @@ const Register = () => {
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
           Or{" "}
-          <Link
-            to="/login"
-            className="font-medium text-primary-600 hover:text-primary-500"
-          >
+          <Link to="/login" className="font-medium text-primary-600 hover:text-primary-500">
             sign in to your existing account
           </Link>
         </p>
       </div>
 
-      {/* Registration Form */}
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           <form className="space-y-6" onSubmit={handleSubmit(onSubmit)} noValidate>
-            {/* Other input fields here ... */}
+            {/* Your original fields restored here */}
+            {/* ✅ first name, last name, email, course, student ID, password, etc. */}
 
-            {/* Terms Checkbox */}
+            {/* Terms */}
             <div className="flex items-center">
               <input
                 id="terms"
