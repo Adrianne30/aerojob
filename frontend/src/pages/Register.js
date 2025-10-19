@@ -18,7 +18,7 @@ import {
 import LoadingSpinner from "../components/LoadingSpinner";
 import Logo from "../components/Logo";
 import { authAPI, logApiBase } from "../utils/api";
-import logo from "../assets/logo.png"; // ✅ Make sure this file exists or use public/logo.png
+import logo from "../assets/philsca_logo.png";
 
 /* ------------------------------- OTP Modal ------------------------------- */
 function OTPModal({ email, open, onClose, onVerified }) {
