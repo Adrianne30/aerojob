@@ -3,6 +3,7 @@ import { Plus, X, Search, ExternalLink, Image as ImageIcon, Pencil } from 'lucid
 import { companiesAPI, jobsAPI, uploadsAPI, absoluteUrl } from '../utils/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import toast from 'react-hot-toast';
+import { Building2 } from "lucide-react";
 
 const defaultForm = {
   _id: '',
@@ -162,6 +163,7 @@ const CompanyManagement = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
+          <Building2 className="h-6 w-6 text-blue-600" />
           <h1 className="text-2xl font-semibold">Company Management</h1>
           <p className="text-sm text-gray-500">
             Manage all partner companies in the system
