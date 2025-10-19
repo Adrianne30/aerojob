@@ -1,21 +1,31 @@
+// src/components/LoadingSpinner.js
 import React from 'react';
-
-const LoadingSpinner = ({ size = 'medium', text = 'Loading...' }) => {
+const LoadingSpinner = ({ size = 'small', text = '', fullscreen = false }) => {
   const sizeClasses = {
-    small: 'w-4 h-4',
-    medium: 'w-8 h-8',
-    large: 'w-12 h-12',
-    xl: 'w-16 h-16'
+    small: 'w-4 h-4 border-2',
+    medium: 'w-8 h-8 border-4',
+    large: 'w-12 h-12 border-4',
   };
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-      <div className="text-center">
-        <div className={`spinner ${sizeClasses[size]} mx-auto mb-4`}></div>
-        {text && (
-          <p className="text-gray-600 text-sm">{text}</p>
-        )}
+  const spinner = (
+    <div
+      className={`animate-spin rounded-full border-t-transparent border-primary-500 ${sizeClasses[size]}`}
+    ></div>
+  );
+
+  if (!fullscreen) {
+    return (
+      <div className="flex items-center justify-center space-x-2">
+        {spinner}
+        {text && <span className="text-sm text-gray-700">{text}</span>}
       </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 space-y-4">
+      {spinner}
+      {text && <p className="text-gray-600 text-sm">{text}</p>}
     </div>
   );
 };
