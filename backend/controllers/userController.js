@@ -1,4 +1,5 @@
 const path = require('path');
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
 
@@ -68,7 +69,6 @@ const getAllUsers = async (req, res) => {
 // Current authenticated user (relies on auth middleware)
 const getMe = async (req, res) => {
   try {
-    // req.user is set by auth middleware; refresh from DB for latest data
     const me = await User.findById(req.user._id || req.user.id)
       .select('-password -otp -resetPasswordToken');
     if (!me) return res.status(404).json({ message: 'User not found' });
@@ -114,7 +114,7 @@ const updateProfile = async (req, res) => {
     const {
       firstName,
       lastName,
-      phone,            // ← use `phone` to match frontend
+      phone,
       address,
       bio,
       skills,
@@ -137,14 +137,12 @@ const updateProfile = async (req, res) => {
     if (skills    != null) user.skills    = normalizeSkills(skills);
     if (studentId != null) user.studentId = studentId;
 
-    // Student/Alumni specific
     if (['student', 'alumni'].includes(user.userType)) {
       if (course         != null) user.course         = course;
       if (yearLevel      != null) user.yearLevel      = yearLevel;
       if (graduationYear != null) user.graduationYear = graduationYear;
     }
 
-    // Alumni specific
     if (user.userType === 'alumni') {
       if (currentEmployer != null) user.currentEmployer = currentEmployer;
       if (position        != null) user.position        = position;
@@ -169,8 +167,6 @@ const updateProfilePicture = async (req, res) => {
     const user = await User.findById(req.user._id || req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Store a clean relative URL you can serve statically from server.js
-    // e.g., app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
     const relativeUrl = path.posix.join(
       '/uploads/profile-pictures/',
       path.basename(req.file.path)
@@ -201,7 +197,7 @@ const deleteUser = async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    u.isActive = false; // soft delete
+    u.isActive = false;
     await u.save();
 
     res.json({ message: 'User deleted successfully' });
@@ -234,11 +230,10 @@ const createUser = async (req, res) => {
       course,
       yearLevel,
       phone,
-      isEmailVerified = true, // Admin-created users are automatically verified
-      isActive = true
     } = req.body;
 
-    const existingUser = await User.findOne({ email });
+    // ✅ Check if email already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return res.status(400).json({
         success: false,
@@ -246,6 +241,7 @@ const createUser = async (req, res) => {
       });
     }
 
+    // ✅ Check for duplicate student ID (students only)
     if (userType === 'student' && studentId) {
       const existingStudent = await User.findOne({ studentId });
       if (existingStudent) {
@@ -256,9 +252,13 @@ const createUser = async (req, res) => {
       }
     }
 
+    // ✅ Hash password before saving
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // ✅ Create verified + active user (no OTP)
     const user = new User({
-      email,
-      password,
+      email: email.toLowerCase(),
+      password: hashedPassword,
       firstName,
       lastName,
       userType,
@@ -266,22 +266,23 @@ const createUser = async (req, res) => {
       course: ['student', 'alumni'].includes(userType) ? course : undefined,
       yearLevel: userType === 'student' ? yearLevel : undefined,
       phone,
-      isEmailVerified,
-      isActive
+      isEmailVerified: true,
+      isActive: true,
+      status: 'active',
     });
 
     await user.save();
 
     res.status(201).json({
       success: true,
-      message: 'User created successfully',
-      user: sanitizeUser(user)
+      message: 'User created successfully (no OTP required)',
+      user: sanitizeUser(user),
     });
   } catch (error) {
     console.error('Error creating user:', error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: 'Internal server error',
     });
   }
 };
@@ -332,7 +333,7 @@ const getUserStatistics = async (req, res) => {
 /* -------------------------------- Exports ------------------------------- */
 module.exports = {
   getAllUsers,
-  getUsers: getAllUsers,   // alias so routes can use either name
+  getUsers: getAllUsers,
   getMe,
   getUserById,
   updateProfile,
