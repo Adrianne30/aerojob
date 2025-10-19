@@ -306,8 +306,7 @@ export default function JobManagement() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
-           <Briefcase className="h-6 w-6 text-blue-600" />
-          <h1 className="text-xl sm:text-2xl font-semibold">Job Management</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold"> <Briefcase className="h-6 w-6 text-blue-600" /> Job Management</h1>
           <p className="text-sm text-gray-500">Create, approve, and manage all job postings.</p>
         </div>
         <div className="flex items-center gap-2">
