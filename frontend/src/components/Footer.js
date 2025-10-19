@@ -10,7 +10,7 @@ import {
   Instagram,
   X,
 } from "lucide-react";
-import logo from "../assets/logo.png"; // ✅ adjust if your logo path differs
+import logo from "../assets/philsca_logo.png";
 
 const Footer = () => {
   const [activeModal, setActiveModal] = useState(null);
