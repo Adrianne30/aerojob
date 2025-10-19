@@ -1,4 +1,3 @@
-// src/pages/Jobs.js
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { jobsAPI, normalizeWebsite, getImageUrl } from "../utils/api";
 import {
@@ -38,7 +37,7 @@ const JOB_TYPES = [
   { value: "contract", label: "Contract" },
 ];
 
-/* --- fallback logo (small building icon) --- */
+/* --- fallback logo --- */
 const PlaceholderLogo =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -50,7 +49,6 @@ const PlaceholderLogo =
 
 function CompanyLogo({ url, alt }) {
   const [src, setSrc] = useState(getImageUrl(url) || PlaceholderLogo);
-
   return (
     <img
       src={src || PlaceholderLogo}
@@ -62,7 +60,7 @@ function CompanyLogo({ url, alt }) {
   );
 }
 
-/* ---------- analytics helper --------- */
+/* --- analytics helper --- */
 async function logSearchTerm(term) {
   try {
     const base =
@@ -81,7 +79,6 @@ export default function Jobs() {
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState([]);
 
-  // filters
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
@@ -89,7 +86,7 @@ export default function Jobs() {
 
   const lastLoggedRef = useRef("");
 
-  // debounce search
+  // debounce search input
   useEffect(() => {
     const t = setTimeout(() => setQ(qInput.trim()), 350);
     return () => clearTimeout(t);
@@ -112,19 +109,15 @@ export default function Jobs() {
     }
   };
 
-  // first load (only fetch jobs, no categories)
   useEffect(() => {
     fetchJobs({ approvedOnly: true, status: "active" });
   }, []);
 
-  // refetch when filters change
   useEffect(() => {
     (async () => {
       const params = { approvedOnly: true, status: "active" };
       if (q) params.q = q;
       if (type) params.jobType = type;
-      if (location) params.location = location;
-
       await fetchJobs(params);
 
       if (q && q.length >= 2 && lastLoggedRef.current !== q) {
@@ -132,16 +125,20 @@ export default function Jobs() {
         logSearchTerm(q.toLowerCase());
       }
     })();
-  }, [q, type, location]);
+  }, [q, type]);
 
-  const hasFilters = useMemo(
-    () => !!(q || type || location),
-    [q, type, location]
-  );
+  const hasFilters = useMemo(() => !!(q || type || location), [q, type, location]);
+
+  // ✅ Local filter for location (partial, case-insensitive)
+  const filteredJobs = useMemo(() => {
+    const lq = location.trim().toLowerCase();
+    if (!lq) return jobs;
+    return jobs.filter((job) => job.location?.toLowerCase().includes(lq));
+  }, [jobs, location]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-10">
-      {/* Hero heading */}
+      {/* Heading */}
       <div className="mb-6">
         <h1 className="text-[28px] sm:text-3xl font-bold tracking-tight">
           Internships and Jobs Available:
@@ -151,9 +148,10 @@ export default function Jobs() {
         </p>
       </div>
 
-      {/* Filter bar */}
+      {/* Filter Bar */}
       <div className="bg-white/70 backdrop-blur border rounded-2xl shadow-sm p-3 sm:p-4 mb-6">
         <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-center">
+          {/* Search */}
           <div className="sm:col-span-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -217,11 +215,11 @@ export default function Jobs() {
         <div className="py-20">
           <LoadingSpinner />
         </div>
-      ) : jobs.length === 0 ? (
+      ) : filteredJobs.length === 0 ? (
         <EmptyState />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {jobs.map((job) => (
+          {filteredJobs.map((job) => (
             <JobCard key={job._id} job={job} />
           ))}
         </div>
