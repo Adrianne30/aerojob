@@ -72,7 +72,6 @@ export function normalizeWebsite(url) {
 
 export function getImageUrl(path) {
   if (!path) return "";
-  // Automatically use same domain as frontend (works for both local + prod)
   const backendBase = window.location.origin;
   return /^https?:\/\//i.test(path)
     ? path
@@ -161,7 +160,6 @@ export const adminAPI = { getStats: () => unwrap(http.get("/admin/stats")) };
 
 /* -------------------- STUDENT API -------------------- */
 export const studentAPI = {
-  // Fetch student dashboard stats
   getStats: () => unwrap(http.get("/student/stats")),
 };
 
@@ -169,8 +167,29 @@ export const analyticsAPI = {
   logSearch: (term) => http.post("/analytics/search", { term }).catch(() => {}),
 };
 
+/* -------------------- LOG BASE -------------------- */
 export function logApiBase() {
   console.log("[API] Base URL:", API_BASE_RESOLVED, "Root:", API_ROOT);
 }
+
+/* -------------------- GLOBAL WRAPPER ($r) -------------------- */
+export const $r = {
+  createUser: (payload) => usersAPI.create(payload),
+  getUsers: (params) => usersAPI.list(params),
+  updateUser: (id, payload) => usersAPI.update(id, payload),
+  removeUser: (id) => usersAPI.remove(id),
+
+  createJob: (payload) => jobsAPI.create(payload),
+  createCompany: (payload) => companiesAPI.create(payload),
+
+  auth: authAPI,
+  users: usersAPI,
+  jobs: jobsAPI,
+  companies: companiesAPI,
+  surveys: surveysAPI,
+  admin: adminAPI,
+  student: studentAPI,
+  profile: profileAPI,
+};
 
 export default http;

@@ -33,7 +33,7 @@ const AdminCreateUser = () => {
     reset,
   } = useForm({
     defaultValues: {
-      userType: 'student', // default selection for radios
+      userType: 'student',
       course: '',
       yearLevel: '',
     },
@@ -48,29 +48,32 @@ const AdminCreateUser = () => {
 
       // Compose payload for /api/admin/users
       const userData = {
-        userType: data.userType, // 'student' | 'alumni' | 'admin' (server lowercases role)
+        userType: data.userType,
         firstName: data.firstName?.trim(),
         lastName: data.lastName?.trim(),
         email: data.email?.trim().toLowerCase(),
         password: data.password,
-        studentId: (data.userType === 'student' || data.userType === 'alumni') ? data.studentId?.trim() : undefined,
+        studentId:
+          data.userType === 'student' || data.userType === 'alumni'
+            ? data.studentId?.trim()
+            : undefined,
         course: data.userType === 'student' ? data.course : undefined,
         yearLevel: data.userType === 'student' ? data.yearLevel : undefined,
         phone: data.phone?.trim() || undefined,
         status: 'active',
-        // these are harmless if your schema ignores them:
         isEmailVerified: true,
         isActive: true,
       };
 
-      // NOTE: usersAPI.createUser is an alias to usersAPI.create and returns the user object (not { success: true }).
-      const created = await usersAPI.createUser(userData);
-
+      const created = await usersAPI.create(userData);
       if (created && created._id) {
         setBanner({ type: 'success', text: 'User created successfully.' });
         reset();
         navigate('/admin/users', {
-          state: { success: true, message: 'The user has been created successfully' },
+          state: {
+            success: true,
+            message: 'The user has been created successfully',
+          },
         });
         return;
       }
@@ -104,12 +107,20 @@ const AdminCreateUser = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-heading font-bold text-gray-900">Create New User</h1>
-          <p className="text-gray-600 mt-1">Add a new user to the AeroJob platform</p>
+          <h1 className="text-3xl font-heading font-bold text-gray-900">
+            Create New User
+          </h1>
+          <p className="text-gray-600 mt-1">
+            Add a new user to the AeroJob platform
+          </p>
         </div>
 
         <div className="flex space-x-2">
-          <button onClick={handleCancel} className="btn btn-outline flex items-center space-x-2" type="button">
+          <button
+            onClick={handleCancel}
+            className="btn btn-outline flex items-center space-x-2"
+            type="button"
+          >
             <X className="w-4 h-4" />
             <span>Cancel</span>
           </button>
@@ -145,11 +156,17 @@ const AdminCreateUser = () => {
         </div>
       )}
 
-      <form id="create-user-form" onSubmit={handleSubmit(onSubmit)} className="card p-6">
+      <form
+        id="create-user-form"
+        onSubmit={handleSubmit(onSubmit)}
+        className="card p-6"
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Left Column */}
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Basic Information
+            </h3>
 
             {/* User Type */}
             <div>
@@ -166,17 +183,23 @@ const AdminCreateUser = () => {
                         type="radio"
                         value={type.value}
                         className="sr-only"
-                        {...register('userType', { required: 'Please select user type' })}
+                        {...register('userType', {
+                          required: 'Please select user type',
+                        })}
                       />
                       <div className="flex flex-col items-center text-center">
                         <Icon className="w-5 h-5 text-gray-400 mb-1" />
-                        <span className="text-sm font-medium text-gray-900">{type.label}</span>
+                        <span className="text-sm font-medium text-gray-900">
+                          {type.label}
+                        </span>
                       </div>
                     </label>
                   );
                 })}
               </div>
-              {errors.userType && <p className="form-error">{errors.userType.message}</p>}
+              {errors.userType && (
+                <p className="form-error">{errors.userType.message}</p>
+              )}
             </div>
 
             {/* First Name */}
@@ -188,10 +211,15 @@ const AdminCreateUser = () => {
                 placeholder="Enter first name"
                 {...register('firstName', {
                   required: 'First name is required',
-                  minLength: { value: 2, message: 'First name must be at least 2 characters' },
+                  minLength: {
+                    value: 2,
+                    message: 'First name must be at least 2 characters',
+                  },
                 })}
               />
-              {errors.firstName && <p className="form-error">{errors.firstName.message}</p>}
+              {errors.firstName && (
+                <p className="form-error">{errors.firstName.message}</p>
+              )}
             </div>
 
             {/* Last Name */}
@@ -203,10 +231,15 @@ const AdminCreateUser = () => {
                 placeholder="Enter last name"
                 {...register('lastName', {
                   required: 'Last name is required',
-                  minLength: { value: 2, message: 'Last name must be at least 2 characters' },
+                  minLength: {
+                    value: 2,
+                    message: 'Last name must be at least 2 characters',
+                  },
                 })}
               />
-              {errors.lastName && <p className="form-error">{errors.lastName.message}</p>}
+              {errors.lastName && (
+                <p className="form-error">{errors.lastName.message}</p>
+              )}
             </div>
 
             {/* Email */}
@@ -229,13 +262,17 @@ const AdminCreateUser = () => {
                   })}
                 />
               </div>
-              {errors.email && <p className="form-error">{errors.email.message}</p>}
+              {errors.email && (
+                <p className="form-error">{errors.email.message}</p>
+              )}
             </div>
           </div>
 
           {/* Right Column */}
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Account Details</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Account Details
+            </h3>
 
             {/* Password */}
             <div>
@@ -250,7 +287,10 @@ const AdminCreateUser = () => {
                   placeholder="Create a password"
                   {...register('password', {
                     required: 'Password is required',
-                    minLength: { value: 6, message: 'Password must be at least 6 characters' },
+                    minLength: {
+                      value: 6,
+                      message: 'Password must be at least 6 characters',
+                    },
                   })}
                 />
                 <button
@@ -258,10 +298,16 @@ const AdminCreateUser = () => {
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
                   onClick={() => setShowPassword((s) => !s)}
                 >
-                  {showPassword ? <EyeOff className="h-5 w-5 text-gray-400" /> : <Eye className="h-5 w-5 text-gray-400" />}
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5 text-gray-400" />
+                  ) : (
+                    <Eye className="h-5 w-5 text-gray-400" />
+                  )}
                 </button>
               </div>
-              {errors.password && <p className="form-error">{errors.password.message}</p>}
+              {errors.password && (
+                <p className="form-error">{errors.password.message}</p>
+              )}
             </div>
 
             {/* Student/Alumni Specific Fields */}
@@ -274,10 +320,15 @@ const AdminCreateUser = () => {
                     className="input"
                     placeholder="Enter student ID"
                     {...register('studentId', {
-                      required: userType === 'student' ? 'Student ID is required for students' : false,
+                      required:
+                        userType === 'student'
+                          ? 'Student ID is required for students'
+                          : false,
                     })}
                   />
-                  {errors.studentId && <p className="form-error">{errors.studentId.message}</p>}
+                  {errors.studentId && (
+                    <p className="form-error">{errors.studentId.message}</p>
+                  )}
                 </div>
 
                 {/* Course */}
@@ -286,18 +337,33 @@ const AdminCreateUser = () => {
                   <select
                     className="input"
                     {...register('course', {
-                      required: userType === 'student' ? 'Course is required for students' : false,
+                      required:
+                        userType === 'student'
+                          ? 'Course is required for students'
+                          : false,
                     })}
                   >
                     <option value="">Select your course</option>
 
                     <optgroup label="INSTITUTE OF ENGINEERING AND TECHNOLOGY">
-                      <option value="BS in Aeronautical Engineering">BS in Aeronautical Engineering</option>
-                      <option value="BS in Air Transportation Major in Advance Flying">BS in Air Transportation Major in Advance Flying</option>
-                      <option value="BS in Aircraft Maintenance Technology">BS in Aircraft Maintenance Technology</option>
-                      <option value="BS in Aviation Electronics Technology">BS in Aviation Electronics Technology</option>
-                      <option value="Associate in Aircraft Maintenance Technology">Associate in Aircraft Maintenance Technology</option>
-                      <option value="Associate in Aviation Electronics Technology">Associate in Aviation Electronics Technology</option>
+                      <option value="BS in Aeronautical Engineering">
+                        BS in Aeronautical Engineering
+                      </option>
+                      <option value="BS in Air Transportation Major in Advance Flying">
+                        BS in Air Transportation Major in Advance Flying
+                      </option>
+                      <option value="BS in Aircraft Maintenance Technology">
+                        BS in Aircraft Maintenance Technology
+                      </option>
+                      <option value="BS in Aviation Electronics Technology">
+                        BS in Aviation Electronics Technology
+                      </option>
+                      <option value="Associate in Aircraft Maintenance Technology">
+                        Associate in Aircraft Maintenance Technology
+                      </option>
+                      <option value="Associate in Aviation Electronics Technology">
+                        Associate in Aviation Electronics Technology
+                      </option>
                     </optgroup>
 
                     <optgroup label="INSTITUTE OF LIBERAL ARTS AND SCIENCES">
@@ -333,7 +399,9 @@ const AdminCreateUser = () => {
                       </option>
                     </optgroup>
                   </select>
-                  {errors.course && <p className="form-error">{errors.course.message}</p>}
+                  {errors.course && (
+                    <p className="form-error">{errors.course.message}</p>
+                  )}
                 </div>
 
                 <div>
@@ -341,7 +409,10 @@ const AdminCreateUser = () => {
                   <select
                     className="input"
                     {...register('yearLevel', {
-                      required: userType === 'student' ? 'Year level is required for students' : false,
+                      required:
+                        userType === 'student'
+                          ? 'Year level is required for students'
+                          : false,
                     })}
                   >
                     <option value="">Select year level</option>
@@ -351,7 +422,9 @@ const AdminCreateUser = () => {
                       </option>
                     ))}
                   </select>
-                  {errors.yearLevel && <p className="form-error">{errors.yearLevel.message}</p>}
+                  {errors.yearLevel && (
+                    <p className="form-error">{errors.yearLevel.message}</p>
+                  )}
                 </div>
               </>
             )}
@@ -359,7 +432,12 @@ const AdminCreateUser = () => {
             {/* Phone Number */}
             <div>
               <label className="form-label">Phone Number (Optional)</label>
-              <input type="tel" className="input" placeholder="Enter phone number" {...register('phone')} />
+              <input
+                type="tel"
+                className="input"
+                placeholder="Enter phone number"
+                {...register('phone')}
+              />
             </div>
           </div>
         </div>
@@ -372,7 +450,9 @@ const AdminCreateUser = () => {
                 <User className="h-5 w-5 text-error-400" />
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-error-800">{errors.root.message}</h3>
+                <h3 className="text-sm font-medium text-error-800">
+                  {errors.root.message}
+                </h3>
               </div>
             </div>
           </div>
@@ -386,7 +466,9 @@ const AdminCreateUser = () => {
                 <User className="h-5 w-5 text-success-400" />
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-success-800">{location.state.message}</h3>
+                <h3 className="text-sm font-medium text-success-800">
+                  {location.state.message}
+                </h3>
               </div>
             </div>
           </div>
