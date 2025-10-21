@@ -373,21 +373,6 @@ export default function JobManagement() {
             </option>
           ))}
         </select>
-        <select
-          value={category}
-          onChange={(e) => {
-            setCategory(e.target.value);
-            setPage(1);
-          }}
-          className="border rounded-lg px-2 py-2 text-sm md:col-span-2"
-        >
-          <option value="all">All Categories</option>
-          {categories?.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
         <div className="flex items-center gap-2 md:justify-end md:col-span-1">
           <select
             value={pageSize}
@@ -649,22 +634,6 @@ export default function JobManagement() {
                   onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2"
                 />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Category</label>
-                <select
-                  value={form.category}
-                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2"
-                >
-                  <option value="">Select category</option>
-                  {categories?.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
               </div>
 
               <div className="md:col-span-2">
