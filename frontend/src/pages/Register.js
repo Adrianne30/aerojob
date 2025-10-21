@@ -398,7 +398,6 @@ const Register = () => {
               <label htmlFor="course" className="form-label">Course</label>
               <select id="course" className="input" {...register("course")}>
                 <option value="">Select your course</option>
-                <option value="">Select your course</option>
 
                     <optgroup label="INSTITUTE OF ENGINEERING AND TECHNOLOGY">
                       <option value="BS in Aeronautical Engineering">
