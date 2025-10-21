@@ -398,15 +398,61 @@ const Register = () => {
               <label htmlFor="course" className="form-label">Course</label>
               <select id="course" className="input" {...register("course")}>
                 <option value="">Select your course</option>
-                <option value="BS in Aeronautical Engineering">
-                  BS in Aeronautical Engineering
-                </option>
-                <option value="BS in Air Transportation">
-                  BS in Air Transportation
-                </option>
-                <option value="BS in Information Technology">
-                  BS in Information Technology
-                </option>
+                <option value="">Select your course</option>
+
+                    <optgroup label="INSTITUTE OF ENGINEERING AND TECHNOLOGY">
+                      <option value="BS in Aeronautical Engineering">
+                        BS in Aeronautical Engineering
+                      </option>
+                      <option value="BS in Air Transportation Major in Advance Flying">
+                        BS in Air Transportation Major in Advance Flying
+                      </option>
+                      <option value="BS in Aircraft Maintenance Technology">
+                        BS in Aircraft Maintenance Technology
+                      </option>
+                      <option value="BS in Aviation Electronics Technology">
+                        BS in Aviation Electronics Technology
+                      </option>
+                      <option value="Associate in Aircraft Maintenance Technology">
+                        Associate in Aircraft Maintenance Technology
+                      </option>
+                      <option value="Associate in Aviation Electronics Technology">
+                        Associate in Aviation Electronics Technology
+                      </option>
+                    </optgroup>
+
+                    <optgroup label="INSTITUTE OF LIBERAL ARTS AND SCIENCES">
+                      <option value="BS in Aviation Communication Major in Flight Operations">
+                        BS in Aviation Communication Major in Flight Operations
+                      </option>
+                      <option value="BS in Aviation Tourism Major in Travel Management">
+                        BS in Aviation Tourism Major in Travel Management
+                      </option>
+                      <option value="BS in Supply Management with Specialization in Aviation Logistics">
+                        BS in Supply Management with Specialization in Aviation Logistics
+                      </option>
+                      <option value="BS in Aviation Safety and Security Management">
+                        BS in Aviation Safety and Security Management
+                      </option>
+                    </optgroup>
+
+                    <optgroup label="INSTITUTE OF COMPUTER STUDIES">
+                      <option value="BS in Information Technology with Specialization in Aviation Information Technology">
+                        BS in Information Technology with Specialization in Aviation Information Technology
+                      </option>
+                      <option value="BS in Information System with Specialization in Aviation Information System">
+                        BS in Information System with Specialization in Aviation Information System
+                      </option>
+                    </optgroup>
+
+                    <optgroup label="INSTITUTE OF GRADUATE STUDIES">
+                      <option value="Master of Education in Aeronautical Management">
+                        Master of Education in Aeronautical Management
+                      </option>
+                      <option value="Master in Public Administration Major in Government and Airport Administration">
+                        Master in Public Administration Major in Government and Airport Administration
+                      </option>
+                    </optgroup>
               </select>
             </div>
 

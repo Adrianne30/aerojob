@@ -8,8 +8,11 @@ const OTP_TTL_MIN = Number(process.env.OTP_TTL_MIN || 10);
 const MAX_OTP_ATTEMPTS = Number(process.env.MAX_OTP_ATTEMPTS || 5);
 const JWT_TTL = process.env.JWT_TTL || '7d';
 
-/* ---------------- helpers ---------------- */
+/* ============================================================
+   🧩 HELPERS
+   ============================================================ */
 function publicUser(u) {
+  if (!u) return null;
   return {
     id: u._id,
     firstName: u.firstName,
@@ -20,49 +23,69 @@ function publicUser(u) {
     profilePicture: u.profilePicture || '',
   };
 }
+
 function signToken(user) {
   return jwt.sign(
-    { sub: user._id, role: user.userType || user.role || 'student' },
+    { sub: user._id, role: user.userType || 'student' },
     process.env.JWT_SECRET,
     { expiresIn: JWT_TTL }
   );
 }
 
-/* ===================== REGISTER (send OTP) ===================== */
+/* ============================================================
+   🧾 REGISTER (Send OTP)
+   ============================================================ */
 exports.register = async (req, res) => {
   try {
     let {
-      firstName, lastName, email, password,
-      userType, studentId, course, yearLevel, graduationYear
+      firstName,
+      lastName,
+      email,
+      password,
+      userType,
+      studentId,
+      course,
+      yearLevel,
+      graduationYear
     } = req.body || {};
 
     if (!firstName || !lastName || !email || !password) {
       return res.status(400).json({ error: 'First name, last name, email, and password are required.' });
     }
-    email = String(email).toLowerCase().trim();
 
-    // sanitize optional unique fields (avoid "" hitting unique index)
+    email = String(email).toLowerCase().trim();
     const safeStudentId = studentId && String(studentId).trim() ? String(studentId).trim() : undefined;
 
-    // Friendly duplicate checks
-    const dup = await User.findOne({ $or: [{ email }, ...(safeStudentId ? [{ studentId: safeStudentId }] : [])] });
-    if (dup) {
-      if (dup.email === email) return res.status(409).json({ error: 'Email is already registered.' });
-      if (safeStudentId && dup.studentId === safeStudentId) return res.status(409).json({ error: 'Student ID is already registered.' });
-    }
-
-    const user = new User({
-      firstName, lastName, email, password,
-      userType: userType || 'student',
-      studentId: safeStudentId,
-      course, yearLevel, graduationYear,
+    // ✅ Check duplicates cleanly (case-insensitive)
+    const existing = await User.findOne({
+      $or: [{ email }, ...(safeStudentId ? [{ studentId: safeStudentId }] : [])]
     });
 
-    // Generate OTP (secure, hashed inside model) and save
+    if (existing) {
+      if (existing.email === email)
+        return res.status(409).json({ error: 'Email is already registered.' });
+      if (safeStudentId && existing.studentId === safeStudentId)
+        return res.status(409).json({ error: 'Student ID is already registered.' });
+    }
+
+    // ✅ Create user instance
+    const user = new User({
+      firstName,
+      lastName,
+      email,
+      password,
+      userType: userType || 'student',
+      studentId: safeStudentId,
+      course,
+      yearLevel,
+      graduationYear,
+    });
+
+    // ✅ Generate OTP (stored hashed)
     const otp = await user.generateOTP(OTP_TTL_MIN);
     await user.save();
 
-    // Try to send email, but don’t fail registration if SMTP is down
+    // ✅ Send OTP email (fail-safe)
     try {
       const html = `
         <div style="font-family:Arial,sans-serif;line-height:1.6">
@@ -70,7 +93,9 @@ exports.register = async (req, res) => {
           <p>Your One-Time Password (OTP) is:</p>
           <p style="font-size:24px;font-weight:bold;letter-spacing:3px">${otp}</p>
           <p>This code will expire in ${OTP_TTL_MIN} minutes.</p>
-        </div>`;
+        </div>
+      `;
+
       await sendMail({
         to: email,
         subject: 'Your AeroJob verification code',
@@ -85,7 +110,7 @@ exports.register = async (req, res) => {
         user: publicUser(user),
       });
     } catch (mailErr) {
-      console.error('[MAIL] sendMail failed:', mailErr?.message || mailErr);
+      console.error('[MAIL ERROR]', mailErr?.message || mailErr);
       return res.status(202).json({
         ok: true,
         message: 'Registered, but sending the OTP email failed. Please press "Resend code".',
@@ -94,23 +119,30 @@ exports.register = async (req, res) => {
         mailError: true,
       });
     }
+
   } catch (e) {
-    console.error('[REGISTER] error:', e?.code, e?.name, e?.message);
+    console.error('[REGISTER ERROR]', e?.code, e?.message);
+
+    // ✅ Handle MongoDB unique constraint properly
     if (e?.code === 11000) {
       const fields = Object.keys(e.keyPattern || {});
       if (fields.includes('email')) return res.status(409).json({ error: 'Email is already registered.' });
       if (fields.includes('studentId')) return res.status(409).json({ error: 'Student ID is already registered.' });
       return res.status(409).json({ error: 'Duplicate value for a unique field.' });
     }
+
     if (e?.name === 'ValidationError') {
       const first = Object.values(e.errors || {})[0]?.message || 'Invalid input.';
       return res.status(400).json({ error: first });
     }
+
     return res.status(500).json({ error: 'Registration failed. Please try again.' });
   }
 };
 
-/* ===================== VERIFY OTP ===================== */
+/* ============================================================
+   🔐 VERIFY OTP
+   ============================================================ */
 exports.verifyOTP = async (req, res) => {
   try {
     let { email, otp } = req.body || {};
@@ -119,6 +151,7 @@ exports.verifyOTP = async (req, res) => {
 
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ error: 'User not found.' });
+
     if (user.isEmailVerified) {
       const token = signToken(user);
       return res.json({ ok: true, message: 'Already verified.', user: publicUser(user), token });
@@ -131,7 +164,7 @@ exports.verifyOTP = async (req, res) => {
         NO_OTP: 'No active OTP. Please resend.',
         EXPIRED: 'OTP expired. Please resend.',
         TOO_MANY_ATTEMPTS: 'Too many attempts. Please resend a new OTP.',
-        INVALID: 'Invalid code.',
+        INVALID: 'Invalid code.'
       };
       return res.status(400).json({ error: map[result.error] || 'Verification failed.' });
     }
@@ -143,12 +176,14 @@ exports.verifyOTP = async (req, res) => {
     const token = signToken(user);
     res.json({ ok: true, message: 'Email verified.', user: publicUser(user), token });
   } catch (e) {
-    console.error('verify-otp error:', e);
+    console.error('[VERIFY OTP ERROR]', e);
     res.status(500).json({ error: 'Verification failed.' });
   }
 };
 
-/* ===================== RESEND OTP ===================== */
+/* ============================================================
+   🔁 RESEND OTP
+   ============================================================ */
 exports.resendOTP = async (req, res) => {
   try {
     let { email } = req.body || {};
@@ -169,22 +204,26 @@ exports.resendOTP = async (req, res) => {
         <p>OTP:</p>
         <p style="font-size:24px;font-weight:bold;letter-spacing:3px">${otp}</p>
         <p>This code will expire in ${OTP_TTL_MIN} minutes.</p>
-      </div>`;
+      </div>
+    `;
+
     await sendMail({
       to: email,
       subject: 'New AeroJob verification code',
       html,
-      text: `Your new OTP is ${otp}. It expires in ${OTP_TTL_MIN} minutes.`,
+      text: `Your new OTP is ${otp}. It expires in ${OTP_TTL_MIN} minutes.`
     });
 
     res.json({ ok: true, message: 'OTP resent.' });
   } catch (e) {
-    console.error('resend-otp error:', e);
+    console.error('[RESEND OTP ERROR]', e);
     res.status(500).json({ error: 'Resend failed.' });
   }
 };
 
-/* ===================== LOGIN (block unverified) ===================== */
+/* ============================================================
+   🔑 LOGIN (blocks unverified)
+   ============================================================ */
 exports.login = async (req, res) => {
   try {
     let { email, password } = req.body || {};
@@ -207,12 +246,14 @@ exports.login = async (req, res) => {
     const token = signToken(user);
     res.json({ ok: true, token, user: publicUser(user) });
   } catch (e) {
-    console.error('login error:', e);
+    console.error('[LOGIN ERROR]', e);
     res.status(500).json({ error: 'Login failed.' });
   }
 };
 
-/* ===================== FORGOT PASSWORD ===================== */
+/* ============================================================
+   🔁 FORGOT PASSWORD
+   ============================================================ */
 exports.forgotPassword = async (req, res) => {
   try {
     let { email } = req.body || {};
@@ -220,7 +261,7 @@ exports.forgotPassword = async (req, res) => {
     email = String(email).toLowerCase().trim();
 
     const user = await User.findOne({ email });
-    if (!user) return res.json({ ok: true, message: 'If the email exists, a reset link was sent.' }); // avoid enumeration
+    if (!user) return res.json({ ok: true, message: 'If the email exists, a reset link was sent.' });
 
     const tokenRaw = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(tokenRaw).digest('hex');
@@ -236,17 +277,20 @@ exports.forgotPassword = async (req, res) => {
         <p>Click the link below to reset your password (valid for 1 hour):</p>
         <p><a href="${resetUrl}">${resetUrl}</a></p>
         <p>If you didn’t request this, you can ignore this email.</p>
-      </div>`;
-    await sendMail({ to: email, subject: 'Reset your AeroJob password', html, text: `Reset link: ${resetUrl}` });
+      </div>
+    `;
 
+    await sendMail({ to: email, subject: 'Reset your AeroJob password', html, text: `Reset link: ${resetUrl}` });
     res.json({ ok: true, message: 'If the email exists, a reset link was sent.' });
   } catch (e) {
-    console.error('forgotPassword error:', e);
+    console.error('[FORGOT PASSWORD ERROR]', e);
     res.status(500).json({ error: 'Unable to process request.' });
   }
 };
 
-/* ===================== RESET PASSWORD ===================== */
+/* ============================================================
+   🔒 RESET PASSWORD
+   ============================================================ */
 exports.resetPassword = async (req, res) => {
   try {
     const { token, email, password } = req.body || {};
@@ -263,19 +307,21 @@ exports.resetPassword = async (req, res) => {
 
     if (!user) return res.status(400).json({ error: 'Invalid or expired reset token.' });
 
-    user.password = password; // pre-save hook will hash
+    user.password = password; // will be hashed by pre-save hook
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
     await user.save();
 
     res.json({ ok: true, message: 'Password updated successfully.' });
   } catch (e) {
-    console.error('resetPassword error:', e);
+    console.error('[RESET PASSWORD ERROR]', e);
     res.status(500).json({ error: 'Unable to reset password.' });
   }
 };
 
-/* ===================== PROFILE ===================== */
+/* ============================================================
+   👤 GET PROFILE
+   ============================================================ */
 exports.getProfile = async (req, res) => {
   try {
     const userId = req.user?.sub || req.user?.id || req.user?._id;
@@ -286,7 +332,7 @@ exports.getProfile = async (req, res) => {
 
     res.json({ ok: true, user: publicUser(user) });
   } catch (e) {
-    console.error('getProfile error:', e);
+    console.error('[GET PROFILE ERROR]', e);
     res.status(500).json({ error: 'Unable to fetch profile.' });
   }
 };
