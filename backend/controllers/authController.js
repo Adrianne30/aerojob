@@ -1,6 +1,7 @@
 // controllers/authController.js
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { sendMail } = require('../utils/mailer');
 
@@ -224,45 +225,46 @@ exports.resendOTP = async (req, res) => {
 /* ============================================================
    🔑 LOGIN (blocks unverified)
    ============================================================ */
-
 exports.login = async (req, res) => {
   try {
     let { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
+    if (!email || !password)
+      return res.status(400).json({ error: 'Email and password are required.' });
+
     email = String(email).toLowerCase().trim();
 
-    console.log("[LOGIN DEBUG]", {
-  email,
-  userFound: !!user,
-  hashedPassword: user?.password,
-  verified: user?.isEmailVerified,
-});
-
+    // ✅ Get user first
     const user = await User.findOne({ email });
-    if (!user) return res.status(401).json({ error: 'Invalid credentials.' });
+    if (!user)
+      return res.status(401).json({ error: 'Invalid credentials.' });
 
-    const bcrypt = require('bcryptjs');
+    console.log("[LOGIN DEBUG]", {
+      email,
+      userFound: !!user,
+      verified: user?.isEmailVerified,
+      hasPassword: !!user?.password,
+    });
 
-let ok = false;
-try {
-  ok = await user.comparePassword(password);
-} catch (e) {
-  console.error('[COMPARE ERROR]', e);
-}
+    // ✅ Compare passwords safely
+    let ok = false;
+    try {
+      ok = await user.comparePassword(password);
+    } catch (e) {
+      console.error('[COMPARE ERROR]', e);
+    }
 
-// 🩹 QUICK FIX: Fallback if bcrypt fails or passwords mismatch
-if (!ok) {
-  // if somehow the stored password isn't hashed, check direct equality (legacy data)
-  if (user.password === password) {
-    console.warn('[WARNING] Plaintext password detected, rehashing now...');
-    user.password = await bcrypt.hash(password, 10);
-    await user.save();
-    ok = true;
-  }
-}
+    // 🩹 Fallback for unhashed passwords (legacy)
+    if (!ok && user.password === password) {
+      console.warn('[WARNING] Plaintext password detected, rehashing now...');
+      user.password = await bcrypt.hash(password, 10);
+      await user.save();
+      ok = true;
+    }
 
-if (!ok) return res.status(401).json({ error: 'Invalid credentials.' });
+    if (!ok)
+      return res.status(401).json({ error: 'Invalid credentials.' });
 
+    // ✅ Check verification
     if (!user.isEmailVerified) {
       return res.status(403).json({
         error: 'Email not verified. Please check your email for the OTP.',
@@ -270,8 +272,10 @@ if (!ok) return res.status(401).json({ error: 'Invalid credentials.' });
       });
     }
 
+    // ✅ Sign and return token
     const token = signToken(user);
     res.json({ ok: true, token, user: publicUser(user) });
+
   } catch (e) {
     console.error('[LOGIN ERROR]', e);
     res.status(500).json({ error: 'Login failed.' });
@@ -294,7 +298,7 @@ exports.forgotPassword = async (req, res) => {
     const tokenHash = crypto.createHash('sha256').update(tokenRaw).digest('hex');
 
     user.resetPasswordToken = tokenHash;
-    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
     await user.save();
 
     const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${tokenRaw}&email=${encodeURIComponent(email)}`;
@@ -321,9 +325,8 @@ exports.forgotPassword = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   try {
     const { token, email, password } = req.body || {};
-    if (!token || !email || !password) {
+    if (!token || !email || !password)
       return res.status(400).json({ error: 'Token, email, and new password are required.' });
-    }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const user = await User.findOne({
@@ -332,7 +335,8 @@ exports.resetPassword = async (req, res) => {
       resetPasswordExpires: { $gt: new Date() },
     });
 
-    if (!user) return res.status(400).json({ error: 'Invalid or expired reset token.' });
+    if (!user)
+      return res.status(400).json({ error: 'Invalid or expired reset token.' });
 
     user.password = password; // will be hashed by pre-save hook
     user.resetPasswordToken = undefined;
