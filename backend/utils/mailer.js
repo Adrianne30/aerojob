@@ -2,19 +2,31 @@
 const nodemailer = require('nodemailer');
 
 function makeTransport() {
-  // 1) SendGrid (Single Sender or Domain Auth)
-  if (process.env.SENDGRID_API_KEY) {
+  // 1️⃣ Gmail OAuth2
+  if (
+    process.env.EMAIL_SERVICE === 'gmail' &&
+    process.env.EMAIL_CLIENT_ID &&
+    process.env.EMAIL_CLIENT_SECRET &&
+    process.env.EMAIL_REFRESH_TOKEN &&
+    process.env.EMAIL_USER
+  ) {
+    console.log('[MAIL] Using Gmail OAuth2 transport');
     const t = nodemailer.createTransport({
-      host: 'smtp.sendgrid.net',
-      port: 587,
-      secure: false, // STARTTLS
-      auth: { user: 'apikey', pass: process.env.SENDGRID_API_KEY },
+      service: 'gmail',
+      auth: {
+        type: 'OAuth2',
+        user: process.env.EMAIL_USER,
+        clientId: process.env.EMAIL_CLIENT_ID,
+        clientSecret: process.env.EMAIL_CLIENT_SECRET,
+        refreshToken: process.env.EMAIL_REFRESH_TOKEN,
+      },
     });
     return t;
   }
 
-  // 2) Gmail (App Password)
+  // 2️⃣ Gmail (App Password - fallback)
   if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    console.log('[MAIL] Using Gmail SMTP (App Password)');
     const port = Number(process.env.EMAIL_PORT || 587);
     const secure =
       port === 465 ||
@@ -22,14 +34,15 @@ function makeTransport() {
     const t = nodemailer.createTransport({
       host: process.env.EMAIL_HOST, // e.g., smtp.gmail.com
       port,
-      secure,                       // true only if 465
+      secure,
       auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
     });
     return t;
   }
 
-  // 3) Generic/Legacy SMTP (e.g., Mailtrap Sandbox)
+  // 3️⃣ Generic SMTP (e.g., Mailtrap)
   if (process.env.SMTP_HOST) {
+    console.log('[MAIL] Using generic SMTP transport');
     const t = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT || 587),
@@ -42,21 +55,16 @@ function makeTransport() {
     return t;
   }
 
-  // 4) Dev fallback: log email to console
+  // 4️⃣ Dev fallback: logs emails to console only
+  console.warn('[MAIL] No email configuration found. Using DEV console transport.');
   return {
-    verify: async () => {
-      console.warn('[MAIL] No SMTP configured. Using DEV console transport.');
-    },
-    sendMail: async ({ to, subject, text, html, from, replyTo }) => {
-      const defaultFrom =
-        process.env.EMAIL_FROM ||
-        process.env.SMTP_FROM ||
-        '"AeroJob" <no-reply@aerojob.app>';
-      console.log('✉️ [DEV MAIL] to:', to, '| subject:', subject);
-      if (replyTo) console.log('replyTo:', replyTo);
-      if (text) console.log('text:', text);
-      if (html) console.log('html:', html);
-      return { accepted: [to], envelope: { from: from || defaultFrom, to: [to] } };
+    sendMail: async ({ to, subject, text, html }) => {
+      console.log('✉️ [DEV MAIL]');
+      console.log('To:', to);
+      console.log('Subject:', subject);
+      if (text) console.log('Text:', text);
+      if (html) console.log('HTML:', html);
+      return { accepted: [to] };
     },
   };
 }
@@ -64,12 +72,9 @@ function makeTransport() {
 const transporter = makeTransport();
 
 async function sendMail({ to, subject, html, text, from, replyTo }) {
-  // Prefer EMAIL_FROM; for Gmail, it should match EMAIL_USER to avoid rejections.
   const defaultFrom =
     process.env.EMAIL_FROM ||
-    (process.env.EMAIL_USER ? `"AeroJob" <${process.env.EMAIL_USER}>` : null) ||
-    process.env.SMTP_FROM ||
-    '"AeroJob" <no-reply@aerojob.app>';
+    (process.env.EMAIL_USER ? `"AeroJob" <${process.env.EMAIL_USER}>` : '"AeroJob" <no-reply@aerojob.space>');
 
   return transporter.sendMail({
     from: from || defaultFrom,
@@ -81,12 +86,10 @@ async function sendMail({ to, subject, html, text, from, replyTo }) {
   });
 }
 
-// Verify on boot so misconfig shows up immediately
+// Verify transporter connection on startup
 transporter
   .verify()
-  .then(() => console.log('[MAIL] SMTP ready'))
-  .catch((err) =>
-    console.error('[MAIL] SMTP verify failed:', err?.response || err?.message || err)
-  );
+  .then(() => console.log('[MAIL] Ready to send emails ✅'))
+  .catch((err) => console.error('[MAIL] Verify failed ❌:', err.message));
 
 module.exports = { sendMail, transporter };
