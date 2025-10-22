@@ -1,10 +1,17 @@
 import axios from "axios";
-
 /* -------------------- BASE URL -------------------- */
+console.log("⚙️ Hard override in effect — using https://api.aerojob.space");
+
+// 🧩 TEMPORARY FIX: Force backend URL (bypass .env issue)
+const API_BASE_RESOLVED = "https://api.aerojob.space";
+
+/*
+// 🔁 ORIGINAL (restore this later once env works)
 const API_BASE_RESOLVED =
   import.meta?.env?.VITE_API_BASE_URL ||
   process.env.REACT_APP_API_BASE_URL ||
   "https://aerojob.space";
+*/
 
 const API_ROOT = `${API_BASE_RESOLVED.replace(/\/+$/, "")}/api`;
 
