@@ -233,8 +233,27 @@ exports.login = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ error: 'Invalid credentials.' });
 
-    const ok = await user.comparePassword(password);
-    if (!ok) return res.status(401).json({ error: 'Invalid credentials.' });
+    const bcrypt = require('bcryptjs');
+
+let ok = false;
+try {
+  ok = await user.comparePassword(password);
+} catch (e) {
+  console.error('[COMPARE ERROR]', e);
+}
+
+// 🩹 QUICK FIX: Fallback if bcrypt fails or passwords mismatch
+if (!ok) {
+  // if somehow the stored password isn't hashed, check direct equality (legacy data)
+  if (user.password === password) {
+    console.warn('[WARNING] Plaintext password detected, rehashing now...');
+    user.password = await bcrypt.hash(password, 10);
+    await user.save();
+    ok = true;
+  }
+}
+
+if (!ok) return res.status(401).json({ error: 'Invalid credentials.' });
 
     if (!user.isEmailVerified) {
       return res.status(403).json({
