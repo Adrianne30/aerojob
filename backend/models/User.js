@@ -19,8 +19,8 @@ const userSchema = new mongoose.Schema({
   email: {
     type: String,
     required: [true, 'Email is required'],
-    unique: true, // ✅ Ensures no duplicates
-    lowercase: true, // ✅ Always saved in lowercase
+    unique: true, 
+    lowercase: true, 
     trim: true,
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
   },
@@ -88,7 +88,6 @@ const userSchema = new mongoose.Schema({
    ============================================================ */
 // Removed duplicate email index to prevent conflicts
 // Unique constraints already handled by schema options above
-
 userSchema.index({ userType: 1 });
 userSchema.index({ isActive: 1 });
 
@@ -158,4 +157,4 @@ userSchema.methods.toJSON = function () {
   return user;
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', userSchema, 'users');
