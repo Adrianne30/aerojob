@@ -224,11 +224,19 @@ exports.resendOTP = async (req, res) => {
 /* ============================================================
    🔑 LOGIN (blocks unverified)
    ============================================================ */
+
 exports.login = async (req, res) => {
   try {
     let { email, password } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
     email = String(email).toLowerCase().trim();
+
+    console.log("[LOGIN DEBUG]", {
+  email,
+  userFound: !!user,
+  hashedPassword: user?.password,
+  verified: user?.isEmailVerified,
+});
 
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ error: 'Invalid credentials.' });
