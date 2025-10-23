@@ -272,12 +272,12 @@ const createUser = async (req, res) => {
     await user.save();
 
     res.status(201).json({
-      success: true,
-      message: 'User created successfully (no OTP required)',
-      user.debugPassword = password,
-      user: sanitizeUser(user),
-    });
-    
+  success: true,
+  message: 'User created successfully (no OTP required)',
+  debugPassword: password, // ✅ correct syntax
+  user: sanitizeUser(user),
+});
+
   } catch (error) {
     console.error('Error creating user:', error);
     res.status(500).json({
