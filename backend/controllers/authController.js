@@ -190,7 +190,13 @@ exports.resendOTP = async (req, res) => {
     if (!email) return res.status(400).json({ error: 'Email is required.' });
     email = String(email).toLowerCase().trim();
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).select('+password');
+    console.log('[LOGIN DEBUG FULL]', {
+      email,
+      hasPassword: !!user?.password,
+      passwordPreview: user?.password?.slice(0, 20)
+    });
+
     if (!user) return res.status(404).json({ error: 'User not found.' });
     if (user.isEmailVerified) return res.status(400).json({ error: 'User already verified.' });
 
