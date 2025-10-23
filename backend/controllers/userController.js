@@ -251,6 +251,7 @@ const createUser = async (req, res) => {
     }
 
     console.log('[DEBUG] Password received from admin:', `"${password}"`);
+    user.debugPassword = password;
 
     // ✅ Save user directly — pre-save hook will hash the password
     const user = new User({
@@ -273,8 +274,10 @@ const createUser = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'User created successfully (no OTP required)',
+      user.debugPassword = password,
       user: sanitizeUser(user),
     });
+    
   } catch (error) {
     console.error('Error creating user:', error);
     res.status(500).json({
