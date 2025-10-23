@@ -250,6 +250,8 @@ const createUser = async (req, res) => {
       }
     }
 
+    console.log('[DEBUG] Password received from admin:', `"${password}"`);
+
     // ✅ Save user directly — pre-save hook will hash the password
     const user = new User({
       email: email.toLowerCase(),
