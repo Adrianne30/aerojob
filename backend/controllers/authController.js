@@ -57,7 +57,7 @@ exports.register = async (req, res) => {
     email = String(email).toLowerCase().trim();
     const safeStudentId = studentId && String(studentId).trim() ? String(studentId).trim() : undefined;
 
-    // ✅ Check duplicates cleanly (case-insensitive)
+    // ✅ Check duplicates
     const existing = await User.findOne({
       $or: [{ email }, ...(safeStudentId ? [{ studentId: safeStudentId }] : [])]
     });
@@ -86,7 +86,7 @@ exports.register = async (req, res) => {
     const otp = await user.generateOTP(OTP_TTL_MIN);
     await user.save();
 
-    // ✅ Send OTP email (fail-safe)
+    // ✅ Send OTP email
     try {
       const html = `
         <div style="font-family:Arial,sans-serif;line-height:1.6">
@@ -124,7 +124,6 @@ exports.register = async (req, res) => {
   } catch (e) {
     console.error('[REGISTER ERROR]', e?.code, e?.message);
 
-    // ✅ Handle MongoDB unique constraint properly
     if (e?.code === 11000) {
       const fields = Object.keys(e.keyPattern || {});
       if (fields.includes('email')) return res.status(409).json({ error: 'Email is already registered.' });
@@ -160,7 +159,7 @@ exports.verifyOTP = async (req, res) => {
 
     const result = await user.validateOTP(String(otp), MAX_OTP_ATTEMPTS);
     if (!result.ok) {
-      await user.save(); // persist attempts
+      await user.save();
       const map = {
         NO_OTP: 'No active OTP. Please resend.',
         EXPIRED: 'OTP expired. Please resend.',
@@ -223,7 +222,7 @@ exports.resendOTP = async (req, res) => {
 };
 
 /* ============================================================
-   🔑 LOGIN (blocks unverified)
+   🔑 LOGIN (fix for admin-created accounts)
    ============================================================ */
 exports.login = async (req, res) => {
   try {
@@ -233,49 +232,36 @@ exports.login = async (req, res) => {
 
     email = String(email).toLowerCase().trim();
 
-    // ✅ Get user first
-    const user = await User.findOne({ email });
-    if (!user)
-      return res.status(401).json({ error: 'Invalid credentials.' });
+    // ✅ Explicitly select password field
+    const user = await User.findOne({ email }).select('+password');
+    if (!user) return res.status(401).json({ error: 'Invalid credentials.' });
 
-    console.log("[LOGIN DEBUG]", {
+    console.log('[LOGIN DEBUG]', {
       email,
       userFound: !!user,
-      verified: user?.isEmailVerified,
-      hasPassword: !!user?.password,
+      verified: user.isEmailVerified,
     });
 
-    // ✅ Compare passwords safely
-    let ok = false;
-    try {
-      ok = await user.comparePassword(password);
-    } catch (e) {
-      console.error('[COMPARE ERROR]', e);
-    }
+    // ✅ Compare password properly
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(401).json({ error: 'Invalid credentials.' });
 
-    // 🩹 Fallback for unhashed passwords (legacy)
-    if (!ok && user.password === password) {
-      console.warn('[WARNING] Plaintext password detected, rehashing now...');
-      user.password = await bcrypt.hash(password, 10);
-      await user.save();
-      ok = true;
-    }
-
-    if (!ok)
-      return res.status(401).json({ error: 'Invalid credentials.' });
-
-    // ✅ Check verification
+    // ✅ Skip verification for admin-created accounts
     if (!user.isEmailVerified) {
-      return res.status(403).json({
-        error: 'Email not verified. Please check your email for the OTP.',
-        requiresVerification: true,
-      });
+      if (user.userType !== 'admin') {
+        return res.status(403).json({
+          error: 'Email not verified. Please check your email for the OTP.',
+          requiresVerification: true,
+        });
+      }
+      // Auto-verify admins if not verified
+      user.isEmailVerified = true;
+      await user.save();
     }
 
-    // ✅ Sign and return token
+    // ✅ Sign JWT and respond
     const token = signToken(user);
     res.json({ ok: true, token, user: publicUser(user) });
-
   } catch (e) {
     console.error('[LOGIN ERROR]', e);
     res.status(500).json({ error: 'Login failed.' });
