@@ -1,9 +1,7 @@
 import axios from "axios";
 /* -------------------- BASE URL -------------------- */
 console.log("⚙️ Hard override in effect — using https://api.aerojob.space");
-
-// 🧩 TEMPORARY FIX: Force backend URL (bypass .env issue)
-const API_BASE_RESOLVED = "https://api.aerojob.space";
+const API_BASE_RESOLVED = "https://aerojob-backend-production.up.railway.app";
 
 /*
 // 🔁 ORIGINAL (restore this later once env works)
