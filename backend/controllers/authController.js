@@ -149,7 +149,7 @@ exports.verifyOTP = async (req, res) => {
     if (!email || !otp) return res.status(400).json({ error: 'Email and OTP are required.' });
     email = String(email).toLowerCase().trim();
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).select('+password');
     if (!user) return res.status(404).json({ error: 'User not found.' });
 
     if (user.isEmailVerified) {
