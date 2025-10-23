@@ -250,14 +250,10 @@ const createUser = async (req, res) => {
       }
     }
 
-    // ✅ Hash password manually (no OTP for admin-created users)
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // ✅ Create user
+    // ✅ Let schema hash password automatically
     const user = new User({
       email: email.toLowerCase(),
-      password: hashedPassword,
+      password, // plain text — pre('save') will hash it
       firstName,
       lastName,
       userType,
