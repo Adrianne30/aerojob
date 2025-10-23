@@ -250,10 +250,10 @@ const createUser = async (req, res) => {
       }
     }
 
-    // ✅ Let schema hash password automatically
+    // ✅ Save user directly — pre-save hook will hash the password
     const user = new User({
       email: email.toLowerCase(),
-      password, // plain text — pre('save') will hash it
+      password, // plain text, schema will hash it once
       firstName,
       lastName,
       userType,
@@ -261,7 +261,7 @@ const createUser = async (req, res) => {
       course: ['student', 'alumni'].includes(userType) ? course : undefined,
       yearLevel: userType === 'student' ? yearLevel : undefined,
       phone,
-      isEmailVerified: true,
+      isEmailVerified: true,  // skip OTP
       isActive: true,
       status: 'active',
     });
@@ -281,6 +281,7 @@ const createUser = async (req, res) => {
     });
   }
 };
+
 
 /* ---------------------------- User statistics --------------------------- */
 const getUserStatistics = async (req, res) => {
