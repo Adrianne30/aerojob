@@ -1,5 +1,4 @@
 const path = require('path');
-const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
 
@@ -28,7 +27,7 @@ const normalizeSkills = (skills) => {
 // Admin-only (use adminAuth in route)
 const getAllUsers = async (req, res) => {
   try {
-    const page  = Number(req.query.page  ?? 1);
+    const page = Number(req.query.page ?? 1);
     const limit = Number(req.query.limit ?? 10);
     const { userType, search } = req.query;
 
@@ -38,10 +37,10 @@ const getAllUsers = async (req, res) => {
     }
     if (search) {
       query.$or = [
-        { firstName:  { $regex: search, $options: 'i' } },
-        { lastName:   { $regex: search, $options: 'i' } },
-        { email:      { $regex: search, $options: 'i' } },
-        { studentId:  { $regex: search, $options: 'i' } },
+        { firstName: { $regex: search, $options: 'i' } },
+        { lastName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { studentId: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -66,7 +65,6 @@ const getAllUsers = async (req, res) => {
 };
 
 /* ------------------------------- Get me --------------------------------- */
-// Current authenticated user (relies on auth middleware)
 const getMe = async (req, res) => {
   try {
     const me = await User.findById(req.user._id || req.user.id)
@@ -88,7 +86,7 @@ const getUserById = async (req, res) => {
     if (!u) return res.status(404).json({ message: 'User not found' });
 
     const isAdmin = req.user?.userType === 'admin';
-    const isSelf  = String(req.user?._id || req.user?.id) === String(req.params.id);
+    const isSelf = String(req.user?._id || req.user?.id) === String(req.params.id);
     if (!isAdmin && !isSelf) {
       return res.status(403).json({ message: 'Access denied' });
     }
@@ -130,22 +128,22 @@ const updateProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     if (firstName != null) user.firstName = firstName;
-    if (lastName  != null) user.lastName  = lastName;
-    if (phone     != null) user.phone     = phone;
-    if (address   != null) user.address   = address;
-    if (bio       != null) user.bio       = bio;
-    if (skills    != null) user.skills    = normalizeSkills(skills);
+    if (lastName != null) user.lastName = lastName;
+    if (phone != null) user.phone = phone;
+    if (address != null) user.address = address;
+    if (bio != null) user.bio = bio;
+    if (skills != null) user.skills = normalizeSkills(skills);
     if (studentId != null) user.studentId = studentId;
 
     if (['student', 'alumni'].includes(user.userType)) {
-      if (course         != null) user.course         = course;
-      if (yearLevel      != null) user.yearLevel      = yearLevel;
+      if (course != null) user.course = course;
+      if (yearLevel != null) user.yearLevel = yearLevel;
       if (graduationYear != null) user.graduationYear = graduationYear;
     }
 
     if (user.userType === 'alumni') {
       if (currentEmployer != null) user.currentEmployer = currentEmployer;
-      if (position        != null) user.position        = position;
+      if (position != null) user.position = position;
     }
 
     await user.save();
@@ -192,7 +190,7 @@ const deleteUser = async (req, res) => {
     if (!u) return res.status(404).json({ message: 'User not found' });
 
     const isAdmin = req.user?.userType === 'admin';
-    const isSelf  = String(req.user?._id || req.user?.id) === String(req.params.id);
+    const isSelf = String(req.user?._id || req.user?.id) === String(req.params.id);
     if (!isAdmin && !isSelf) {
       return res.status(403).json({ message: 'Access denied' });
     }
@@ -252,9 +250,10 @@ const createUser = async (req, res) => {
       }
     }
 
+    // ✅ Create user — schema will handle hashing
     const user = new User({
       email: email.toLowerCase(),
-      password,
+      password, // plain text here; pre-save hook will hash it
       firstName,
       lastName,
       userType,
@@ -266,7 +265,6 @@ const createUser = async (req, res) => {
       isActive: true,
       status: 'active',
     });
-
 
     await user.save();
 
@@ -285,13 +283,12 @@ const createUser = async (req, res) => {
 };
 
 /* ---------------------------- User statistics --------------------------- */
-// Admin-only
 const getUserStatistics = async (req, res) => {
   try {
-    const totalUsers   = await User.countDocuments({ isActive: true });
-    const totalStudents= await User.countDocuments({ userType: 'student', isActive: true });
-    const totalAlumni  = await User.countDocuments({ userType: 'alumni',  isActive: true });
-    const totalAdmins  = await User.countDocuments({ userType: 'admin',   isActive: true });
+    const totalUsers = await User.countDocuments({ isActive: true });
+    const totalStudents = await User.countDocuments({ userType: 'student', isActive: true });
+    const totalAlumni = await User.countDocuments({ userType: 'alumni', isActive: true });
+    const totalAdmins = await User.countDocuments({ userType: 'admin', isActive: true });
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -309,7 +306,7 @@ const getUserStatistics = async (req, res) => {
         }
       },
       { $group: { _id: '$course', count: { $sum: 1 } } },
-      { $sort:  { count: -1 } },
+      { $sort: { count: -1 } },
       { $limit: 10 }
     ]);
 
