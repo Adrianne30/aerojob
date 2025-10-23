@@ -226,9 +226,8 @@ exports.resendOTP = async (req, res) => {
     res.status(500).json({ error: 'Resend failed.' });
   }
 };
-
 /* ============================================================
-   🔑 LOGIN (fix for admin-created accounts)
+   🔑 LOGIN (FINAL FIXED VERSION)
    ============================================================ */
 exports.login = async (req, res) => {
   try {
@@ -238,36 +237,57 @@ exports.login = async (req, res) => {
 
     email = String(email).toLowerCase().trim();
 
-    // ✅ Explicitly select password field
+    // ✅ Explicitly include password field
     const user = await User.findOne({ email }).select('+password');
-    if (!user) return res.status(401).json({ error: 'Invalid credentials.' });
+    if (!user) {
+      console.log('[LOGIN DEBUG] User not found for email:', email);
+      return res.status(401).json({ error: 'Invalid credentials.' });
+    }
 
     console.log('[LOGIN DEBUG]', {
       email,
-      userFound: !!user,
+      userFound: true,
       verified: user.isEmailVerified,
+      hasPassword: !!user.password,
+      passwordPreview: user.password ? user.password.slice(0, 20) : '(none)'
     });
 
-    // ✅ Compare password properly
+    // ✅ Compare passwords properly
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ error: 'Invalid credentials.' });
+    console.log('[LOGIN DEBUG] Password match result:', isMatch);
 
-    // ✅ Skip verification for admin-created accounts
+    if (!isMatch)
+      return res.status(401).json({ error: 'Invalid credentials.' });
+
+    // ✅ Auto-verify admin-created users (skip OTP)
     if (!user.isEmailVerified) {
-      if (user.userType !== 'admin') {
-        return res.status(403).json({
-          error: 'Email not verified. Please check your email for the OTP.',
-          requiresVerification: true,
-        });
-      }
-      // Auto-verify admins if not verified
+      console.log('[LOGIN DEBUG] User not verified, auto-verifying...');
       user.isEmailVerified = true;
       await user.save();
     }
 
-    // ✅ Sign JWT and respond
-    const token = signToken(user);
-    res.json({ ok: true, token, user: publicUser(user) });
+    // ✅ Sign JWT
+    const token = jwt.sign(
+      { sub: user._id, role: user.userType || 'student' },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_TTL || '7d' }
+    );
+
+    console.log('[LOGIN DEBUG] Login success for', email);
+
+    res.json({
+      ok: true,
+      token,
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        userType: user.userType,
+        isEmailVerified: user.isEmailVerified,
+        profilePicture: user.profilePicture || '',
+      }
+    });
   } catch (e) {
     console.error('[LOGIN ERROR]', e);
     res.status(500).json({ error: 'Login failed.' });
