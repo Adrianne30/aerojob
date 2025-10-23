@@ -92,16 +92,24 @@ userSchema.index({ userType: 1 });
 userSchema.index({ isActive: 1 });
 
 /* ============================================================
-   🔒 PASSWORD HOOKS
+   🔒 PASSWORD HOOK (Safe, prevents double hashing)
    ============================================================ */
 userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
   try {
+    // Only hash if password was modified or created new
+    if (!this.isModified('password')) return next();
+
+    // 🛡️ Skip hashing if the password already looks like a bcrypt hash
+    if (typeof this.password === 'string' && this.password.startsWith('$2b$')) {
+      console.warn('[WARNING] Skipping re-hash: password already hashed.');
+      return next();
+    }
+
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
     next();
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 });
 
