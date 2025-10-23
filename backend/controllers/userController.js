@@ -252,13 +252,9 @@ const createUser = async (req, res) => {
       }
     }
 
-    // ✅ Hash password before saving
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // ✅ Create verified + active user (no OTP)
     const user = new User({
       email: email.toLowerCase(),
-      password: hashedPassword,
+      password,
       firstName,
       lastName,
       userType,
@@ -270,6 +266,7 @@ const createUser = async (req, res) => {
       isActive: true,
       status: 'active',
     });
+
 
     await user.save();
 
