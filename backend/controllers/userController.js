@@ -257,10 +257,9 @@ const createUser = async (req, res) => {
 
     user.debugPassword = password;
 
-    // ✅ Save user directly — pre-save hook will hash the password
     const user = new User({
       email: email.toLowerCase(),
-      password, // plain text, schema will hash it once
+      password, // plain text only
       firstName,
       lastName,
       userType,
@@ -268,12 +267,13 @@ const createUser = async (req, res) => {
       course: ['student', 'alumni'].includes(userType) ? course : undefined,
       yearLevel: userType === 'student' ? yearLevel : undefined,
       phone,
-      isEmailVerified: true,  // skip OTP
+      isEmailVerified: true,
       isActive: true,
       status: 'active',
     });
-
+    
     await user.save();
+
 
     res.status(201).json({
   success: true,
