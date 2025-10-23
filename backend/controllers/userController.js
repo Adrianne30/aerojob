@@ -1,4 +1,5 @@
 const path = require('path');
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
 
@@ -24,7 +25,6 @@ const normalizeSkills = (skills) => {
 };
 
 /* ----------------------------- Get all users ---------------------------- */
-// Admin-only (use adminAuth in route)
 const getAllUsers = async (req, res) => {
   try {
     const page = Number(req.query.page ?? 1);
@@ -250,10 +250,14 @@ const createUser = async (req, res) => {
       }
     }
 
-    // ✅ Create user — schema will handle hashing
+    // ✅ Hash password manually (no OTP for admin-created users)
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // ✅ Create user
     const user = new User({
       email: email.toLowerCase(),
-      password, // plain text here; pre-save hook will hash it
+      password: hashedPassword,
       firstName,
       lastName,
       userType,
