@@ -250,7 +250,11 @@ const createUser = async (req, res) => {
       }
     }
 
-    console.log('[DEBUG] Password received from admin:', `"${password}"`);
+   console.log('[DEBUG] Password received from admin (raw):', `"${password}"`);
+  if (password.startsWith('$2b$')) {
+  console.warn('[WARNING] Password is ALREADY HASHED!');
+  }
+
     user.debugPassword = password;
 
     // ✅ Save user directly — pre-save hook will hash the password
