@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Backend for AeroJob - OJT/Internship Management System for Philippine State College of Aeronautics",
   "main": "server.js",
+  "engines": {
+  "node": ">=20.0.0"
+},
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
@@ -39,4 +42,6 @@
   "devDependencies": {
     "nodemon": "^3.1.10"
   }
+
+  
 }
