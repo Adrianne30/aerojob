@@ -385,6 +385,34 @@ api.get(
 );
 
 /* --------------------------------- JOBS ------------------------------------- */
+/* Web scraping first */
+api.get(
+  '/jobs/scrape',
+  asyncH(async (_req, res) => {
+    try {
+      const scraped = await scrapeAviationJobs();
+      for (const j of scraped) {
+        const exists = await Job.findOne({ title: j.title, company: j.company });
+        if (!exists) {
+          await Job.create({
+            title: j.title,
+            description: 'External aviation job listing scraped from Indeed.',
+            companyName: j.company,
+            location: j.location,
+            link: j.link,
+            status: 'active',
+            isApproved: true,
+          });
+        }
+      }
+      res.json({ message: 'Scraping complete', count: scraped.length, preview: scraped.slice(0, 5) });
+    } catch (error) {
+      console.error('Scrape error:', error.message);
+      res.status(500).json({ error: 'Failed to scrape jobs' });
+    }
+  })
+);
+
 api.get(
   '/jobs',
   asyncH(async (req, res) => {
@@ -462,60 +490,6 @@ api.delete(
     res.json({ deleted: true });
   })
 );
-
-/* ----------------------------- JOB SCRAPING ---------------------------- */
-// Simple helper to scrape Indeed for aviation jobs
-async function scrapeAviationJobs() {
-  const url = 'https://ph.indeed.com/jobs?q=aircraft+technician+OR+aircraft+mechanic+OR+avionics+engineer';
-  const { data } = await axios.get(url);
-  const $ = cheerio.load(data);
-
-  const jobs = [];
-  $('.job_seen_beacon').each((_, el) => {
-    const title = $(el).find('h2 a').text().trim();
-    const company = $(el).find('.companyName').text().trim();
-    const location = $(el).find('.companyLocation').text().trim();
-    const link = 'https://ph.indeed.com' + ($(el).find('h2 a').attr('href') || '');
-    if (title && company) jobs.push({ title, company, location, link });
-  });
-  return jobs;
-}
-
-// GET /api/jobs/scrape  → Scrape external aviation jobs
-api.get(
-  '/jobs/scrape',
-  asyncH(async (_req, res) => {
-    try {
-      const scraped = await scrapeAviationJobs();
-
-      // Optional: save them in the database (skip duplicates)
-      for (const j of scraped) {
-        const exists = await Job.findOne({ title: j.title, company: j.company });
-        if (!exists) {
-          await Job.create({
-            title: j.title,
-            description: 'External aviation job listing scraped from Indeed.',
-            companyName: j.company,
-            location: j.location,
-            link: j.link,
-            status: 'active',
-            isApproved: true,
-          });
-        }
-      }
-
-      res.json({
-        message: 'Scraping complete',
-        count: scraped.length,
-        preview: scraped.slice(0, 5),
-      });
-    } catch (error) {
-      console.error('Scrape error:', error.message);
-      res.status(500).json({ error: 'Failed to scrape jobs' });
-    }
-  })
-);
-
 
 /* -------------------------------- COMPANIES --------------------------------- */
 const isValidEmail = (v) => (typeof v === 'string' ? /.+\@.+\..+/.test(v) : false);
