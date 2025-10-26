@@ -1,5 +1,6 @@
 // AEROJOB API server with Auth, Surveys, Jobs, Companies, Users, Admin stats, Profile, and Analytics endpoints
 require('dotenv').config();
+if (typeof File === 'undefined') global.File = class File {};
 
 const express = require('express');
 const cors = require('cors');
