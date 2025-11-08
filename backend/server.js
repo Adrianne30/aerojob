@@ -19,7 +19,8 @@ const profileRoutes = require('./routes/profile');
 const { sendMail } = require('./utils/mailer');
 const app = express();
 app.set('trust proxy', 1);
-
+const axios = require("axios");
+const cheerio = require("cheerio");
 
 /* ----------------------------- Security & Logging ----------------------------- */
 app.use(helmet({ crossOriginResourcePolicy: false }));
@@ -382,34 +383,46 @@ api.get(
   })
 );
 
-/* ----------------------------- JOB SCRAPING (WORKABROAD.PH) ---------------------------- */
-const axios = require("axios");
-const cheerio = require("cheerio");
+/* ----------------------------- JOB SCRAPING (WORKABROAD + FALLBACK) ---------------------------- */
+
 
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
-  const targetURL =
-    "https://www.workabroad.ph/jobs/jobseeker/jobsearch?specialization=Aircraft+Maintenance+Technician";
-  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&url=${encodeURIComponent(
-    targetURL
-  )}`;
+
+  // ✅ Updated search URL (new WorkAbroad search structure)
+  const targetURL = "https://www.workabroad.ph/jobseeker/jobs?specialization=Aircraft+Maintenance+Technician";
+  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&url=${encodeURIComponent(targetURL)}`;
 
   console.log("[SCRAPER] Fetching jobs from WorkAbroad.ph via ScraperAPI...");
 
   try {
-    const { data } = await axios.get(scraperURL, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      timeout: 60000,
-    });
+    let data;
 
-    // 🧩 Log first 500 characters to inspect HTML
-    console.log("[SCRAPER] Response snippet:", data.slice(0, 500));
+    // Try via ScraperAPI first
+    try {
+      const response = await axios.get(scraperURL, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        timeout: 60000,
+      });
+      data = response.data;
+    } catch (scraperError) {
+      console.warn("[SCRAPER] ScraperAPI failed:", scraperError.message);
+      console.log("[SCRAPER] Retrying direct request (fallback)...");
+      // 🔁 fallback direct request if ScraperAPI fails
+      const response = await axios.get(targetURL, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        },
+      });
+      data = response.data;
+    }
 
-    // 🧩 Save HTML to file (works locally; optional in Railway)
+    // 🔍 Write snapshot for debugging
     try {
       fs.writeFileSync("scraper-snapshot.html", data);
     } catch (_) {}
@@ -417,8 +430,8 @@ async function scrapeAviationJobs() {
     const $ = cheerio.load(data);
     const jobs = [];
 
-    // ✅ Updated selectors (WorkAbroad HTML can vary)
-    $(".job-item, .result-item").each((_, el) => {
+    // ✅ Updated selectors (WorkAbroad 2025 layout)
+    $(".job-list-item, .job-card, .job-item").each((_, el) => {
       const title =
         $(el).find(".job-title a").text().trim() ||
         $(el).find("a.text-blue-700").text().trim();
@@ -444,6 +457,7 @@ async function scrapeAviationJobs() {
     throw err;
   }
 }
+
 
 
 /* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
