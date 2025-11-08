@@ -382,18 +382,18 @@ api.get(
 );
 
 /* --------------------------------- JOBS ------------------------------------- */
+/* ----------------------------- JOB SCRAPING (WORKABROAD.PH) ---------------------------- */
 const axios = require('axios');
 const cheerio = require('cheerio');
 
-// 🧩 Scraper function using MyNimo as source (via ScraperAPI)
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
 
-  // ✅ Use MyNimo as target (updated URL)
-  const targetURL = 'https://www.mynimo.com/search?q=aircraft';
+  // ✅ Use WorkAbroad.ph instead of MyNimo
+  const targetURL = 'https://www.workabroad.ph/job-function/aviation/';
   const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&premium=true&url=${encodeURIComponent(targetURL)}`;
 
-  console.log('[SCRAPER] Fetching jobs from MyNimo via ScraperAPI...');
+  console.log('[SCRAPER] Fetching jobs from WorkAbroad.ph via ScraperAPI...');
 
   try {
     const { data } = await axios.get(scraperURL, {
@@ -402,31 +402,22 @@ async function scrapeAviationJobs() {
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
         'Accept-Language': 'en-US,en;q=0.9',
       },
-      timeout: 60000, // 60 seconds
+      timeout: 60000,
     });
 
     const $ = cheerio.load(data);
     const jobs = [];
 
-    // ✅ Adjust selectors for MyNimo’s structure
-    $('.job-item, .job-post, .job-list-item').each((_, el) => {
-      const title =
-        $(el).find('.job-title a').text().trim() ||
-        $(el).find('.position-title a').text().trim();
-      const company =
-        $(el).find('.company-name').text().trim() ||
-        $(el).find('.company').text().trim();
-      const location =
-        $(el).find('.job-location').text().trim() ||
-        $(el).find('.location').text().trim();
-      const link =
-        'https://www.mynimo.com' +
-        ($(el).find('a').attr('href') || '');
-
+    // ✅ Adjusted selectors for WorkAbroad.ph
+    $('.job-list-item, .job-item').each((_, el) => {
+      const title = $(el).find('.job-title a').text().trim();
+      const company = $(el).find('.company-name').text().trim();
+      const location = $(el).find('.job-location').text().trim();
+      const link = 'https://www.workabroad.ph' + ($(el).find('a').attr('href') || '');
       if (title && company) jobs.push({ title, company, location, link });
     });
 
-    console.log(`[SCRAPER] Found ${jobs.length} MyNimo jobs`);
+    console.log(`[SCRAPER] Found ${jobs.length} WorkAbroad jobs`);
     return jobs;
   } catch (err) {
     console.error('[SCRAPER] Error:', err.message);
