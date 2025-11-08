@@ -383,82 +383,52 @@ api.get(
   })
 );
 
-/* ----------------------------- JOB SCRAPING (WORKABROAD + FALLBACK) ---------------------------- */
-
-
+/* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
-
-  // ✅ Updated search URL (new WorkAbroad search structure)
-  const targetURL = "https://www.workabroad.ph/jobseeker/jobs?specialization=Aircraft+Maintenance+Technician";
+  const targetURL = "https://mycareers.ph/job-search?query=aviation";
   const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&url=${encodeURIComponent(targetURL)}`;
 
-  console.log("[SCRAPER] Fetching jobs from WorkAbroad.ph via ScraperAPI...");
+  console.log("[SCRAPER] Fetching jobs from MyCareers.ph via ScraperAPI...");
 
   try {
-    let data;
-
-    // Try via ScraperAPI first
-    try {
-      const response = await axios.get(scraperURL, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-        timeout: 60000,
-      });
-      data = response.data;
-    } catch (scraperError) {
-      console.warn("[SCRAPER] ScraperAPI failed:", scraperError.message);
-      console.log("[SCRAPER] Retrying direct request (fallback)...");
-      // 🔁 fallback direct request if ScraperAPI fails
-      const response = await axios.get(targetURL, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-        },
-      });
-      data = response.data;
-    }
-
-    // 🔍 Write snapshot for debugging
-    try {
-      fs.writeFileSync("scraper-snapshot.html", data);
-    } catch (_) {}
+    const { data } = await axios.get(scraperURL, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      timeout: 60000,
+    });
 
     const $ = cheerio.load(data);
     const jobs = [];
 
-    // ✅ Updated selectors (WorkAbroad 2025 layout)
-    $(".job-list-item, .job-card, .job-item").each((_, el) => {
+    // ✅ Typical MyCareersPH layout
+    $(".job-card, .job-item, .career-job").each((_, el) => {
       const title =
-        $(el).find(".job-title a").text().trim() ||
-        $(el).find("a.text-blue-700").text().trim();
+        $(el).find(".job-title").text().trim() ||
+        $(el).find("h3 a").text().trim();
       const company =
         $(el).find(".company-name").text().trim() ||
-        $(el).find(".font-bold.text-gray-900").text().trim();
+        $(el).find(".job-company").text().trim();
       const location =
         $(el).find(".job-location").text().trim() ||
-        $(el).find(".text-gray-500.text-sm").first().text().trim();
+        $(el).find(".location").text().trim();
       const link =
-        "https://www.workabroad.ph" +
-        ($(el).find(".job-title a").attr("href") ||
-          $(el).find("a.text-blue-700").attr("href") ||
-          "");
+        "https://mycareers.ph" +
+        ($(el).find("a").attr("href") || "");
 
       if (title && company) jobs.push({ title, company, location, link });
     });
 
-    console.log(`[SCRAPER] Found ${jobs.length} WorkAbroad.ph jobs`);
+    console.log(`[SCRAPER] Found ${jobs.length} MyCareersPH jobs`);
     return jobs;
   } catch (err) {
-    console.error("[SCRAPER] Error fetching jobs:", err.message);
+    console.error("[SCRAPER] Error:", err.message);
     throw err;
   }
 }
-
-
 
 /* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
 api.get(
