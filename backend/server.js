@@ -383,37 +383,58 @@ api.get(
 );
 
 /* ----------------------------- JOB SCRAPING (WORKABROAD.PH) ---------------------------- */
-const axios = require('axios');
-const cheerio = require('cheerio');
+/* ----------------------------- JOB SCRAPING (WORKABROAD.PH DEBUG MODE) ---------------------------- */
+const axios = require("axios");
+const cheerio = require("cheerio");
+const fs = require("fs");
 
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
   const targetURL =
-    'https://www.workabroad.ph/jobs/jobseeker/jobsearch?specialization=Aircraft+Maintenance+Technician';
-  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&url=${encodeURIComponent(targetURL)}`;
+    "https://www.workabroad.ph/jobs/jobseeker/jobsearch?specialization=Aircraft+Maintenance+Technician";
+  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&url=${encodeURIComponent(
+    targetURL
+  )}`;
 
-  console.log('[SCRAPER] Fetching jobs from WorkAbroad.ph via ScraperAPI...');
+  console.log("[SCRAPER] Fetching jobs from WorkAbroad.ph via ScraperAPI...");
 
   try {
     const { data } = await axios.get(scraperURL, {
       headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
-        'Accept-Language': 'en-US,en;q=0.9',
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        "Accept-Language": "en-US,en;q=0.9",
       },
       timeout: 60000,
     });
 
+    // 🧩 Log first 500 characters to inspect HTML
+    console.log("[SCRAPER] Response snippet:", data.slice(0, 500));
+
+    // 🧩 Save HTML to file (works locally; optional in Railway)
+    try {
+      fs.writeFileSync("scraper-snapshot.html", data);
+    } catch (_) {}
+
     const $ = cheerio.load(data);
     const jobs = [];
 
-    // ✅ WorkAbroad job card selector
-    $('.job-item').each((_, el) => {
-      const title = $(el).find('.job-title a').text().trim();
-      const company = $(el).find('.company-name').text().trim();
-      const location = $(el).find('.job-location').text().trim();
+    // ✅ Updated selectors (WorkAbroad HTML can vary)
+    $(".job-item, .result-item").each((_, el) => {
+      const title =
+        $(el).find(".job-title a").text().trim() ||
+        $(el).find("a.text-blue-700").text().trim();
+      const company =
+        $(el).find(".company-name").text().trim() ||
+        $(el).find(".font-bold.text-gray-900").text().trim();
+      const location =
+        $(el).find(".job-location").text().trim() ||
+        $(el).find(".text-gray-500.text-sm").first().text().trim();
       const link =
-        'https://www.workabroad.ph' + ($(el).find('.job-title a').attr('href') || '');
+        "https://www.workabroad.ph" +
+        ($(el).find(".job-title a").attr("href") ||
+          $(el).find("a.text-blue-700").attr("href") ||
+          "");
 
       if (title && company) jobs.push({ title, company, location, link });
     });
@@ -421,10 +442,11 @@ async function scrapeAviationJobs() {
     console.log(`[SCRAPER] Found ${jobs.length} WorkAbroad.ph jobs`);
     return jobs;
   } catch (err) {
-    console.error('[SCRAPER] Error:', err.message);
+    console.error("[SCRAPER] Error fetching jobs:", err.message);
     throw err;
   }
 }
+
 
 /* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
 api.get(
