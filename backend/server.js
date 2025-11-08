@@ -381,16 +381,20 @@ api.get(
   })
 );
 
-/* ----------------------------- JOB SCRAPING (INDEED FIXED) ---------------------------- */
+/* --------------------------------- JOBS ------------------------------------- */
 const axios = require('axios');
 const cheerio = require('cheerio');
 
+/* ----------------------------- JOB SCRAPING (INDEED FIXED) ---------------------------- */
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
 
   // ✅ Use Indeed Philippines (Stable)
-  const targetURL = 'https://ph.indeed.com/jobs?q=aircraft+technician+OR+aviation+mechanic+OR+avionics+engineer';
-  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&premium=true&render=true&url=${encodeURIComponent(targetURL)}`;
+  const targetURL =
+    'https://ph.indeed.com/jobs?q=aircraft+technician+OR+aviation+mechanic+OR+avionics+engineer';
+  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&premium=true&render=true&url=${encodeURIComponent(
+    targetURL
+  )}`;
 
   console.log('[SCRAPER] Fetching jobs from Indeed Philippines via ScraperAPI...');
 
@@ -424,7 +428,42 @@ async function scrapeAviationJobs() {
   }
 }
 
-// ✅ Standard Job routes
+/* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
+api.get(
+  '/jobs/scrape',
+  asyncH(async (_req, res) => {
+    try {
+      const scraped = await scrapeAviationJobs();
+
+      // Optionally save to DB (skip duplicates)
+      for (const j of scraped) {
+        const exists = await Job.findOne({ title: j.title, company: j.company });
+        if (!exists) {
+          await Job.create({
+            title: j.title,
+            description: 'External aviation job listing scraped from Indeed.',
+            companyName: j.company,
+            location: j.location,
+            link: j.link,
+            status: 'active',
+            isApproved: true,
+          });
+        }
+      }
+
+      res.json({
+        message: 'Scraping complete',
+        count: scraped.length,
+        preview: scraped.slice(0, 5),
+      });
+    } catch (error) {
+      console.error('Scrape error:', error.message);
+      res.status(500).json({ error: 'Failed to scrape jobs' });
+    }
+  })
+);
+
+/* ----------------------------- STANDARD JOB ROUTES ---------------------------- */
 api.get(
   '/jobs',
   asyncH(async (req, res) => {
