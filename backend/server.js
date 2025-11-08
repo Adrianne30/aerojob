@@ -381,15 +381,14 @@ api.get(
   })
 );
 
-/* --------------------------------- JOBS ------------------------------------- */
+/* ----------------------------- JOB SCRAPING (INDEED UPDATED SELECTORS) ---------------------------- */
 const axios = require('axios');
 const cheerio = require('cheerio');
 
-/* ----------------------------- JOB SCRAPING (INDEED FIXED) ---------------------------- */
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
 
-  // ✅ Use Indeed Philippines (Stable)
+  // ✅ Indeed PH search URL
   const targetURL =
     'https://ph.indeed.com/jobs?q=aircraft+technician+OR+aviation+mechanic+OR+avionics+engineer';
   const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&premium=true&render=true&url=${encodeURIComponent(
@@ -411,12 +410,15 @@ async function scrapeAviationJobs() {
     const $ = cheerio.load(data);
     const jobs = [];
 
-    // ✅ Selectors for Indeed PH
-    $('a.tapItem').each((_, el) => {
+    // ✅ New selector for Indeed job cards
+    $('.job_seen_beacon').each((_, el) => {
       const title = $(el).find('h2.jobTitle').text().trim();
       const company = $(el).find('.companyName').text().trim();
       const location = $(el).find('.companyLocation').text().trim();
-      const link = 'https://ph.indeed.com' + ($(el).attr('href') || '');
+      const link =
+        'https://ph.indeed.com' +
+        ($(el).find('a').attr('href') || '');
+
       if (title && company) jobs.push({ title, company, location, link });
     });
 
