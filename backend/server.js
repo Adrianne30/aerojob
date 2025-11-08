@@ -384,60 +384,39 @@ api.get(
 
 /* ----------------------------- JOB SCRAPING (INDEED FINAL FIX) ---------------------------- */
 const axios = require('axios');
-const cheerio = require('cheerio');
 
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
 
-  const targetURL =
-    'https://ph.indeed.com/jobs?q=aircraft+technician+OR+aviation+mechanic+OR+avionics+engineer';
-  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&premium=true&render=true&url=${encodeURIComponent(
-    targetURL
-  )}`;
+  // ✅ Use a broad aviation search query to ensure results
+  const targetURL = 'https://ph.indeed.com/jobs?q=aviation';
+  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&autoparse=true&premium=true&render=true&url=${encodeURIComponent(targetURL)}`;
 
-  console.log('[SCRAPER] Fetching jobs from Indeed Philippines via ScraperAPI...');
+  console.log('[SCRAPER] Using Autoparse mode for Indeed Philippines...');
 
   try {
-    const { data } = await axios.get(scraperURL, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      timeout: 60000,
-    });
+    const { data } = await axios.get(scraperURL, { timeout: 60000 });
 
-    fs.writeFileSync('scraper-snapshot.html', data);
-    console.log('[SCRAPER] HTML snapshot saved (check Railway logs)');
-    const $ = cheerio.load(data);
-    const jobs = [];
+    // If autoparse is active, ScraperAPI will return JSON with results
+    if (!data || !data.results) {
+      console.warn('[SCRAPER] Autoparse returned no results.');
+      return [];
+    }
 
-    // ✅ Use multiple selectors to handle both new and old Indeed layouts
-    $('.job_seen_beacon, .resultContent, .jobsearch-SerpJobCard').each((_, el) => {
-      const title =
-        $(el).find('h2.jobTitle span').first().text().trim() ||
-        $(el).find('a span').first().text().trim();
-      const company =
-        $(el).find('.companyName').text().trim() ||
-        $(el).find('.company').text().trim();
-      const location =
-        $(el).find('.companyLocation').text().trim() ||
-        $(el).find('.location').text().trim();
-      const link =
-        'https://ph.indeed.com' +
-        ($(el).find('a').attr('href') || '');
+    const jobs = data.results.map((r) => ({
+      title: r.title || r.heading || 'Untitled Job',
+      company: r.company || 'Unknown Company',
+      location: r.location || 'Philippines',
+      link: r.url || '',
+    }));
 
-      if (title && company) jobs.push({ title, company, location, link });
-    });
-
-    console.log(`[SCRAPER] Found ${jobs.length} Indeed jobs`);
+    console.log(`[SCRAPER] Found ${jobs.length} Indeed jobs via Autoparse`);
     return jobs;
   } catch (err) {
     console.error('[SCRAPER] Error:', err.message);
     throw err;
   }
 }
-
 
 /* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
 api.get(
