@@ -381,19 +381,18 @@ api.get(
   })
 );
 
-/* --------------------------------- JOBS ------------------------------------- */
-/* ----------------------------- JOB SCRAPING (WORKABROAD.PH) ---------------------------- */
+/* ----------------------------- JOB SCRAPING (INDEED FIXED) ---------------------------- */
 const axios = require('axios');
 const cheerio = require('cheerio');
 
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
 
-  // ✅ Use WorkAbroad.ph instead of MyNimo
-  const targetURL = 'https://www.workabroad.ph/job-function/aviation/';
-  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&premium=true&url=${encodeURIComponent(targetURL)}`;
+  // ✅ Use Indeed Philippines (Stable)
+  const targetURL = 'https://ph.indeed.com/jobs?q=aircraft+technician+OR+aviation+mechanic+OR+avionics+engineer';
+  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&premium=true&render=true&url=${encodeURIComponent(targetURL)}`;
 
-  console.log('[SCRAPER] Fetching jobs from WorkAbroad.ph via ScraperAPI...');
+  console.log('[SCRAPER] Fetching jobs from Indeed Philippines via ScraperAPI...');
 
   try {
     const { data } = await axios.get(scraperURL, {
@@ -408,57 +407,22 @@ async function scrapeAviationJobs() {
     const $ = cheerio.load(data);
     const jobs = [];
 
-    // ✅ Adjusted selectors for WorkAbroad.ph
-    $('.job-list-item, .job-item').each((_, el) => {
-      const title = $(el).find('.job-title a').text().trim();
-      const company = $(el).find('.company-name').text().trim();
-      const location = $(el).find('.job-location').text().trim();
-      const link = 'https://www.workabroad.ph' + ($(el).find('a').attr('href') || '');
+    // ✅ Selectors for Indeed PH
+    $('a.tapItem').each((_, el) => {
+      const title = $(el).find('h2.jobTitle').text().trim();
+      const company = $(el).find('.companyName').text().trim();
+      const location = $(el).find('.companyLocation').text().trim();
+      const link = 'https://ph.indeed.com' + ($(el).attr('href') || '');
       if (title && company) jobs.push({ title, company, location, link });
     });
 
-    console.log(`[SCRAPER] Found ${jobs.length} WorkAbroad jobs`);
+    console.log(`[SCRAPER] Found ${jobs.length} Indeed jobs`);
     return jobs;
   } catch (err) {
     console.error('[SCRAPER] Error:', err.message);
     throw err;
   }
 }
-
-// 🧭 Manual trigger route for scraping — must be placed ABOVE /jobs/:id
-api.get(
-  '/jobs/scrape',
-  asyncH(async (_req, res) => {
-    try {
-      const scraped = await scrapeAviationJobs();
-
-      // Optionally save scraped jobs into the database (skip duplicates)
-      for (const j of scraped) {
-        const exists = await Job.findOne({ title: j.title, company: j.company });
-        if (!exists) {
-          await Job.create({
-            title: j.title,
-            description: 'External aviation job listing scraped from MyNimo.',
-            companyName: j.company,
-            location: j.location,
-            link: j.link,
-            status: 'active',
-            isApproved: true,
-          });
-        }
-      }
-
-      res.json({
-        message: 'Scraping complete',
-        count: scraped.length,
-        preview: scraped.slice(0, 5),
-      });
-    } catch (error) {
-      console.error('Scrape error:', error.message);
-      res.status(500).json({ error: 'Failed to scrape jobs' });
-    }
-  })
-);
 
 // ✅ Standard Job routes
 api.get(
