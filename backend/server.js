@@ -381,14 +381,13 @@ api.get(
   })
 );
 
-/* ----------------------------- JOB SCRAPING (INDEED UPDATED SELECTORS) ---------------------------- */
+/* ----------------------------- JOB SCRAPING (INDEED FINAL FIX) ---------------------------- */
 const axios = require('axios');
 const cheerio = require('cheerio');
 
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
 
-  // ✅ Indeed PH search URL
   const targetURL =
     'https://ph.indeed.com/jobs?q=aircraft+technician+OR+aviation+mechanic+OR+avionics+engineer';
   const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&premium=true&render=true&url=${encodeURIComponent(
@@ -410,11 +409,17 @@ async function scrapeAviationJobs() {
     const $ = cheerio.load(data);
     const jobs = [];
 
-    // ✅ New selector for Indeed job cards
-    $('.job_seen_beacon').each((_, el) => {
-      const title = $(el).find('h2.jobTitle').text().trim();
-      const company = $(el).find('.companyName').text().trim();
-      const location = $(el).find('.companyLocation').text().trim();
+    // ✅ Use multiple selectors to handle both new and old Indeed layouts
+    $('.job_seen_beacon, .resultContent, .jobsearch-SerpJobCard').each((_, el) => {
+      const title =
+        $(el).find('h2.jobTitle span').first().text().trim() ||
+        $(el).find('a span').first().text().trim();
+      const company =
+        $(el).find('.companyName').text().trim() ||
+        $(el).find('.company').text().trim();
+      const location =
+        $(el).find('.companyLocation').text().trim() ||
+        $(el).find('.location').text().trim();
       const link =
         'https://ph.indeed.com' +
         ($(el).find('a').attr('href') || '');
@@ -429,6 +434,7 @@ async function scrapeAviationJobs() {
     throw err;
   }
 }
+
 
 /* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
 api.get(
