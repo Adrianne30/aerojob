@@ -20,6 +20,7 @@ const { sendMail } = require('./utils/mailer');
 const app = express();
 app.set('trust proxy', 1);
 
+
 /* ----------------------------- Security & Logging ----------------------------- */
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(morgan('dev'));
@@ -406,6 +407,8 @@ async function scrapeAviationJobs() {
       timeout: 60000,
     });
 
+    fs.writeFileSync('scraper-snapshot.html', data);
+    console.log('[SCRAPER] HTML snapshot saved (check Railway logs)');
     const $ = cheerio.load(data);
     const jobs = [];
 
