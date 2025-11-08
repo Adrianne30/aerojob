@@ -162,7 +162,7 @@ const CompanyManagement = () => {
     <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div>
+        <div> 
           <h1 className="text-2xl font-semibold"> <Building2 className="h-6 w-6 text-blue-600" /> Company Management</h1>
           <p className="text-sm text-gray-500">
             Manage all partner companies in the system
