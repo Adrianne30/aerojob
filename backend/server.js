@@ -383,10 +383,8 @@ api.get(
 );
 
 /* ----------------------------- JOB SCRAPING (WORKABROAD.PH) ---------------------------- */
-/* ----------------------------- JOB SCRAPING (WORKABROAD.PH DEBUG MODE) ---------------------------- */
 const axios = require("axios");
 const cheerio = require("cheerio");
-const fs = require("fs");
 
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
