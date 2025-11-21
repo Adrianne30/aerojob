@@ -566,7 +566,7 @@ api.get(
 /* ----------------------------- STANDARD JOB ROUTES ---------------------------- */
 api.get(
   '/jobs',
-  asyncH(async req, res => {
+  asyncH(async (req, res) => {
     const q = {};
     if (req.query.q) q.$text = { $search: req.query.q };
     if (req.query.jobType) q.jobType = req.query.jobType;
@@ -913,7 +913,7 @@ api.get(
 /* ------------------------------ ANALYTICS (search) --------------------------- */
 api.post(
   '/analytics/search',
-  asyncH(async req, res => {
+  asyncH(async req => {
     const raw = String(req.body?.term || '').trim();
     if (!raw) return res.status(400).json({ ok: false, error: 'term required' });
 
