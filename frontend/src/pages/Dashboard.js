@@ -66,7 +66,6 @@ export default function Dashboard() {
   const [studentStats, setStudentStats] = useState({
   availableJobs: 0,
   jobsViewed: 0,
-  applications: 0,
   companies: 0,
 });
 
@@ -175,7 +174,6 @@ export default function Dashboard() {
         setStudentStats({
           availableJobs: s?.availableJobs || 0,
           jobsViewed: s?.jobsViewed || 0,
-          applications: s?.applications || 0,
           companies: s?.companies || 0,
         });
       }
@@ -334,7 +332,7 @@ export default function Dashboard() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard icon={Briefcase} title="Total Jobs" value={stats.totalJobs} />
+        <StatCard icon={Briefcase} title="Total Jobs" value={stats.availableJobs} />
         <StatCard icon={FileText} title="Pending Approval" value={stats.pendingApproval} />
         <StatCard icon={Users} title="Total Users" value={stats.totalUsers} />
         <StatCard icon={UserCheck} title="New Users (30d)" value={stats.newUsers} />
@@ -475,7 +473,6 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard icon={Briefcase} title="Available Jobs" value={studentStats.availableJobs} />
         <StatCard icon={Eye} title="Jobs Viewed" value={studentStats.jobsViewed} />
-        <StatCard icon={ListChecks} title="Applications" value={studentStats.applications} />
         <StatCard icon={Building2} title="Companies" value={studentStats.companies} />
       </div>
 
