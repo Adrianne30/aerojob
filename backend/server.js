@@ -384,21 +384,20 @@ api.get(
 );
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
-async function scrapeAviationJobs({ testOnly = false } = {}) {
+async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
   const targetURL = "https://mycareers.ph/job-search?query=aviation";
   const primaryIsScraper = !!API_KEY;
+  // use HTTPS and include render=true for JS sites
   const scraperURL = primaryIsScraper
-    ? `http://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`
+    ? `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`
     : targetURL;
 
   console.log("[SCRAPER] Fetching jobs from MyCareers.ph...", primaryIsScraper ? "(via ScraperAPI)" : "(direct fetch)");
 
   const attempts = [];
-  const axiosTimeout = 15000; // 15 seconds per attempt
 
-  async function tryFetch(url, label) {
-    const start = Date.now();
+  async function tryFetch(url) {
     try {
       const resp = await axios.get(url, {
         headers: {
@@ -406,91 +405,61 @@ async function scrapeAviationJobs({ testOnly = false } = {}) {
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
           "Accept-Language": "en-US,en;q=0.9",
         },
-        timeout: axiosTimeout,
+        timeout: 15000, // shorter timeout to avoid platform hang
+        responseType: 'text',
+        maxContentLength: 2 * 1024 * 1024, // 2MB max
       });
-      const ms = Date.now() - start;
-      attempts.push({ url, label, status: resp.status, ms, length: String(resp.data || '').length });
+      attempts.push({ url, status: resp.status, length: String(resp.data || '').length });
       return resp.data;
     } catch (err) {
-      const ms = Date.now() - start;
       attempts.push({
         url,
-        label,
         error: err.message || String(err),
         status: err.response?.status,
-        ms,
         snippet: err.response?.data ? String(err.response.data).slice(0, 200) : undefined,
       });
       return null;
     }
   }
 
-  // Try ScraperAPI (if available), then direct fetch, both with short timeouts
-  let html = null;
-  if (primaryIsScraper) {
-    html = await tryFetch(scraperURL, "scraperapi");
-    if (!html) {
-      console.warn("[SCRAPER] ScraperAPI failed, trying direct fetch");
-      html = await tryFetch(targetURL, "direct");
-    }
-  } else {
-    html = await tryFetch(targetURL, "direct");
+  let html = await tryFetch(scraperURL);
+  if (!html && primaryIsScraper) {
+    console.warn("[SCRAPER] ScraperAPI attempt failed, falling back to direct fetch");
+    html = await tryFetch(targetURL);
   }
 
   if (!html) {
     console.error("[SCRAPER] All fetch attempts failed:", attempts);
-    return { jobs: [], attempts, error: "All fetch attempts failed" };
+    return { jobs: [], attempts };
   }
 
   const $ = cheerio.load(html);
   const jobs = [];
-
-  // Try multiple selectors and heuristics so we can handle variations in markup.
   const candidates = $(".job-card, .job-item, .career-job, .listing-item, .result-item, li");
 
   candidates.each((_, el) => {
     const $el = $(el);
-
-    // Prefer explicit anchors that look like job links
     let anchor = $el.is("a") ? $el : $el.find('a[href*="/job"], a[href*="/jobs"], a').first();
-
-    // Fallback: search upward for an anchor in parent nodes
-    if (!anchor || !anchor.length) {
-      anchor = $el.closest("a");
-    }
-
-    // Title heuristics
+    if (!anchor || !anchor.length) anchor = $el.closest("a");
     let title =
       $el.find(".job-title, .title, h2, h3").first().text().trim() ||
       anchor?.find("h2, h3, .title").first().text().trim() ||
       anchor?.text().trim();
-
-    // Company heuristics
     let company =
       $el.find(".company-name, .company, .job-company, .company__name").first().text().trim() ||
       $el.find(".company").text().trim();
-
-    // Location heuristics
     let location =
       $el.find(".job-location, .location, .job-meta, .location__name").first().text().trim() || "";
-
-    // Link handling
     let href = anchor?.attr("href") || "";
     if (href && !href.startsWith("http")) {
       if (!href.startsWith("/")) href = "/" + href;
       href = "https://mycareers.ph" + href;
     }
-
-    // Normalize
     title = (title || "").replace(/\s+/g, " ").trim();
     company = (company || "").replace(/\s+/g, " ").trim();
-
-    if (title && company) {
-      jobs.push({ title, company, location, link: href || targetURL });
-    }
+    if (title && company) jobs.push({ title, company, location, link: href || targetURL });
   });
 
-  // As a last resort, try to extract job-like anchors anywhere on the page
   if (jobs.length === 0) {
     $("a[href*='/job']").each((_, a) => {
       const $a = $(a);
@@ -507,82 +476,90 @@ async function scrapeAviationJobs({ testOnly = false } = {}) {
     });
   }
 
-  console.log(`[SCRAPER] Found ${jobs.length} MyCareersPH job(s) — attempts:`, attempts.map(a => ({ url: a.url, status: a.status, ms: a.ms, error: a.error })));
-  return { jobs, attempts, error: null };
+  console.log(`[SCRAPER] Found ${jobs.length} job(s) — attempts:`, attempts.map(a => ({ url: a.url, status: a.status, error: a.error })));
+  return { jobs, attempts };
 }
 
 /* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
 api.get(
   '/jobs/scrape',
-  asyncH(async (_req, res) => {
+  asyncH(async (req, res) => {
     try {
       const result = await scrapeAviationJobs();
-      // result: { jobs: [...], attempts: [...] } or empty jobs if failed
       const scraped = Array.isArray(result) ? result : (result.jobs || []);
       const attempts = result.attempts || [];
 
-      // Optionally save to DB (skip duplicates) -- check link or (title + companyName)
+      // Default: do NOT save to DB to keep response fast.
+      // Use ?save=true to persist (limited to first N items).
+      const saveRequested = String(req.query.save || '').toLowerCase() === 'true';
+      const MAX_SAVE = 50;
+
       let created = 0;
       let skipped = 0;
       const errors = [];
-      for (const j of scraped) {
-        try {
-          const exists =
-            (j.link ? await Job.findOne({ link: j.link }) : null) ||
-            (j.title ? await Job.findOne({ title: j.title, companyName: j.company }) : null);
-          if (!exists) {
-            await Job.create({
-              title: j.title,
-              description: 'External aviation job listing scraped from MyCareers.ph.',
-              companyName: j.company,
-              location: j.location,
-              link: j.link,
-              status: 'active',
-              isApproved: true,
-            });
-            created++;
-          } else {
-            skipped++;
+
+      if (saveRequested && scraped.length > 0) {
+        const toSave = scraped.slice(0, MAX_SAVE);
+        // perform saves concurrently for speed
+        const ops = toSave.map(async (j) => {
+          try {
+            const exists =
+              (j.link ? await Job.findOne({ link: j.link }) : null) ||
+              (j.title ? await Job.findOne({ title: j.title, companyName: j.company }) : null);
+            if (!exists) {
+              await Job.create({
+                title: j.title,
+                description: 'External aviation job listing scraped from MyCareers.ph.',
+                companyName: j.company,
+                location: j.location,
+                link: j.link,
+                status: 'active',
+                isApproved: true,
+              });
+              return { status: 'created' };
+            } else {
+              return { status: 'skipped' };
+            }
+          } catch (e) {
+            return { status: 'error', error: e.message || String(e), job: j };
           }
-        } catch (e) {
-          errors.push({ job: j, error: e.message || String(e) });
-          console.error('[SCRAPER] failed to save job:', j.title, e.message || e);
+        });
+
+        const results = await Promise.allSettled(ops);
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            const v = r.value;
+            if (v.status === 'created') created++;
+            else if (v.status === 'skipped') skipped++;
+            else if (v.status === 'error') errors.push(v);
+          } else {
+            errors.push({ status: 'rejected', reason: String(r.reason) });
+          }
         }
       }
 
-      // If no jobs were found and there were fetch attempts with errors, include them for debugging.
       const resp = {
         message: 'Scraping complete',
         found: scraped.length,
+        preview: scraped.slice(0, 10),
+        attempts: attempts,
         created,
         skipped,
         errorsCount: errors.length,
-        preview: scraped.slice(0, 5),
-        attempts: attempts.slice(0, 5),
-        error: result.error,
+        saveRequested,
+        savedLimit: saveRequested ? MAX_SAVE : 0,
       };
 
-      // If nothing was found and there were attempt errors, return 200 with diagnostics instead of a 500
+      // Return diagnostics; do not return 500 for scraping/network issues
       if (scraped.length === 0 && attempts.length > 0) {
-        console.warn('[SCRAPER] No jobs found; returning diagnostics');
         return res.json({ ok: false, note: 'No jobs scraped; see attempts for details', ...resp });
       }
 
-      res.json({ ok: true, ...resp });
+      return res.json({ ok: true, ...resp });
     } catch (error) {
       console.error('Scrape error (unexpected):', error.message || error);
-      // Return diagnostics (avoid throwing 500 with vague message)
-      res.status(200).json({ ok: false, error: String(error.message || error) });
+      return res.status(200).json({ ok: false, error: String(error.message || error) });
     }
-  })
-);
-
-// Add a test endpoint for scraping diagnostics (does not save to DB)
-api.get(
-  '/jobs/scrape/test',
-  asyncH(async (_req, res) => {
-    const result = await scrapeAviationJobs({ testOnly: true });
-    res.json(result);
   })
 );
 
@@ -936,7 +913,7 @@ api.get(
 /* ------------------------------ ANALYTICS (search) --------------------------- */
 api.post(
   '/analytics/search',
-  asyncH(async (req, res) => {
+  asyncH(async req, res => {
     const raw = String(req.body?.term || '').trim();
     if (!raw) return res.status(400).json({ ok: false, error: 'term required' });
 
