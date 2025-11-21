@@ -384,7 +384,7 @@ api.get(
 );
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
-async function scrapeAviationJobs() {
+async function scrapeAviationJobs({ testOnly = false } = {}) {
   const API_KEY = process.env.SCRAPERAPI_KEY;
   const targetURL = "https://mycareers.ph/job-search?query=aviation";
   const primaryIsScraper = !!API_KEY;
@@ -395,8 +395,10 @@ async function scrapeAviationJobs() {
   console.log("[SCRAPER] Fetching jobs from MyCareers.ph...", primaryIsScraper ? "(via ScraperAPI)" : "(direct fetch)");
 
   const attempts = [];
+  const axiosTimeout = 15000; // 15 seconds per attempt
 
-  async function tryFetch(url) {
+  async function tryFetch(url, label) {
+    const start = Date.now();
     try {
       const resp = await axios.get(url, {
         headers: {
@@ -404,32 +406,40 @@ async function scrapeAviationJobs() {
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
           "Accept-Language": "en-US,en;q=0.9",
         },
-        timeout: 60000,
+        timeout: axiosTimeout,
       });
-      attempts.push({ url, status: resp.status, length: String(resp.data || '').length });
+      const ms = Date.now() - start;
+      attempts.push({ url, label, status: resp.status, ms, length: String(resp.data || '').length });
       return resp.data;
     } catch (err) {
+      const ms = Date.now() - start;
       attempts.push({
         url,
+        label,
         error: err.message || String(err),
         status: err.response?.status,
+        ms,
         snippet: err.response?.data ? String(err.response.data).slice(0, 200) : undefined,
       });
       return null;
     }
   }
 
-  // Try primary (ScraperAPI if available) then fallback to direct fetch
-  let html = await tryFetch(scraperURL);
-  if (!html && primaryIsScraper) {
-    console.warn("[SCRAPER] ScraperAPI attempt failed, falling back to direct fetch");
-    html = await tryFetch(targetURL);
+  // Try ScraperAPI (if available), then direct fetch, both with short timeouts
+  let html = null;
+  if (primaryIsScraper) {
+    html = await tryFetch(scraperURL, "scraperapi");
+    if (!html) {
+      console.warn("[SCRAPER] ScraperAPI failed, trying direct fetch");
+      html = await tryFetch(targetURL, "direct");
+    }
+  } else {
+    html = await tryFetch(targetURL, "direct");
   }
 
   if (!html) {
     console.error("[SCRAPER] All fetch attempts failed:", attempts);
-    // Return empty array (don't throw) so route can respond with diagnostics
-    return { jobs: [], attempts };
+    return { jobs: [], attempts, error: "All fetch attempts failed" };
   }
 
   const $ = cheerio.load(html);
@@ -497,8 +507,8 @@ async function scrapeAviationJobs() {
     });
   }
 
-  console.log(`[SCRAPER] Found ${jobs.length} MyCareersPH job(s) — attempts:`, attempts.map(a => ({ url: a.url, status: a.status, error: a.error })));
-  return { jobs, attempts };
+  console.log(`[SCRAPER] Found ${jobs.length} MyCareersPH job(s) — attempts:`, attempts.map(a => ({ url: a.url, status: a.status, ms: a.ms, error: a.error })));
+  return { jobs, attempts, error: null };
 }
 
 /* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
@@ -549,6 +559,7 @@ api.get(
         errorsCount: errors.length,
         preview: scraped.slice(0, 5),
         attempts: attempts.slice(0, 5),
+        error: result.error,
       };
 
       // If nothing was found and there were attempt errors, return 200 with diagnostics instead of a 500
@@ -563,6 +574,15 @@ api.get(
       // Return diagnostics (avoid throwing 500 with vague message)
       res.status(200).json({ ok: false, error: String(error.message || error) });
     }
+  })
+);
+
+// Add a test endpoint for scraping diagnostics (does not save to DB)
+api.get(
+  '/jobs/scrape/test',
+  asyncH(async (_req, res) => {
+    const result = await scrapeAviationJobs({ testOnly: true });
+    res.json(result);
   })
 );
 
