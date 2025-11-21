@@ -122,8 +122,13 @@ export default function Dashboard() {
         if (!mounted) return;
  
         const nextStats = {
-          // prefer server value, otherwise fall back to jobsList length (if available)
-          totalJobs: Number(s?.totalJobs ?? (Array.isArray(jobsList) ? jobsList.length : 0)),
+          // prefer server value (common keys used by backend), otherwise fall back to jobsList length (if available)
+          totalJobs: Number(
+            s?.totalJobs ??
+              s?.availableJobs ??
+              s?.availableJobsCount ??
+              (Array.isArray(jobsList) ? jobsList.length : 0)
+          ),
           totalCompanies: Number(s?.totalCompanies || 0),
           totalUsers: Number(s?.totalUsers || 0),
           pendingApproval: Number(s?.pendingApproval || 0),
