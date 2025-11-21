@@ -190,7 +190,8 @@ export default function Dashboard() {
   return () => {
     mounted = false;
   };
-}, []);
+  // changed dependencies: ensure we re-run when auth/user state or these helpers change
+}, [isAdmin, isStudentOrAlumni, user]);
 
 
   /* -------------------- Helpers: open/close surveys modal -------------------- */
@@ -470,11 +471,12 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Use studentStats (was using admin `stats` that remained zero) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard icon={Briefcase} title="Available Jobs" value={stats.totalJobs} />
-        <StatCard icon={Eye} title="Jobs Viewed" value={0} />
-        <StatCard icon={FileText} title="Applications" value={0} />
-        <StatCard icon={Building2} title="Companies" value={stats.totalCompanies} />
+        <StatCard icon={Briefcase} title="Available Jobs" value={studentStats.availableJobs} />
+        <StatCard icon={Eye} title="Jobs Viewed" value={studentStats.jobsViewed} />
+        <StatCard icon={ListChecks} title="Applications" value={studentStats.applications} />
+        <StatCard icon={Building2} title="Companies" value={studentStats.companies} />
       </div>
 
       {/* Modal */}
