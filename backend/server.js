@@ -387,95 +387,118 @@ api.get(
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
   const targetURL = "https://mycareers.ph/job-search?query=aviation";
-  // Use ScraperAPI with render=true if API key is present (to render JS-heavy pages)
-  const scraperURL = API_KEY
+  const primaryIsScraper = !!API_KEY;
+  const scraperURL = primaryIsScraper
     ? `http://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`
     : targetURL;
 
-  console.log("[SCRAPER] Fetching jobs from MyCareers.ph...", API_KEY ? "(via ScraperAPI)" : "(direct fetch)");
+  console.log("[SCRAPER] Fetching jobs from MyCareers.ph...", primaryIsScraper ? "(via ScraperAPI)" : "(direct fetch)");
 
-  try {
-    const { data } = await axios.get(scraperURL, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      timeout: 60000,
-    });
+  const attempts = [];
 
-    const $ = cheerio.load(data);
-    const jobs = [];
-
-    // Try multiple selectors and heuristics so we can handle variations in markup.
-    const candidates = $(".job-card, .job-item, .career-job, .listing-item, .result-item, li");
-
-    candidates.each((_, el) => {
-      const $el = $(el);
-
-      // Prefer explicit anchors that look like job links
-      let anchor = $el.is("a") ? $el : $el.find('a[href*="/job"], a[href*="/jobs"], a').first();
-
-      // Fallback: search upward for an anchor in parent nodes
-      if (!anchor || !anchor.length) {
-        anchor = $el.closest("a");
-      }
-
-      // Title heuristics
-      let title =
-        $el.find(".job-title, .title, h2, h3").first().text().trim() ||
-        anchor?.find("h2, h3, .title").first().text().trim() ||
-        anchor?.text().trim();
-
-      // Company heuristics
-      let company =
-        $el.find(".company-name, .company, .job-company, .company__name").first().text().trim() ||
-        $el.find(".company").text().trim();
-
-      // Location heuristics
-      let location =
-        $el.find(".job-location, .location, .job-meta, .location__name").first().text().trim() || "";
-
-      // Link handling
-      let href = anchor?.attr("href") || "";
-      if (href && !href.startsWith("http")) {
-        // ensure leading slash
-        if (!href.startsWith("/")) href = "/" + href;
-        href = "https://mycareers.ph" + href;
-      }
-
-      // Normalize
-      title = (title || "").replace(/\s+/g, " ").trim();
-      company = (company || "").replace(/\s+/g, " ").trim();
-
-      if (title && company) {
-        jobs.push({ title, company, location, link: href || targetURL });
-      }
-    });
-
-    // As a last resort, try to extract job-like anchors anywhere on the page
-    if (jobs.length === 0) {
-      $("a[href*='/job']").each((_, a) => {
-        const $a = $(a);
-        const title = $a.text().trim() || $a.attr("title") || "";
-        const href = $a.attr("href") || "";
-        if (title) {
-          let link = href;
-          if (link && !link.startsWith("http")) {
-            if (!link.startsWith("/")) link = "/" + link;
-            link = "https://mycareers.ph" + link;
-          }
-          jobs.push({ title: title.replace(/\s+/g, " ").trim(), company: "", location: "", link });
-        }
+  async function tryFetch(url) {
+    try {
+      const resp = await axios.get(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        timeout: 60000,
       });
+      attempts.push({ url, status: resp.status, length: String(resp.data || '').length });
+      return resp.data;
+    } catch (err) {
+      attempts.push({
+        url,
+        error: err.message || String(err),
+        status: err.response?.status,
+        snippet: err.response?.data ? String(err.response.data).slice(0, 200) : undefined,
+      });
+      return null;
+    }
+  }
+
+  // Try primary (ScraperAPI if available) then fallback to direct fetch
+  let html = await tryFetch(scraperURL);
+  if (!html && primaryIsScraper) {
+    console.warn("[SCRAPER] ScraperAPI attempt failed, falling back to direct fetch");
+    html = await tryFetch(targetURL);
+  }
+
+  if (!html) {
+    console.error("[SCRAPER] All fetch attempts failed:", attempts);
+    // Return empty array (don't throw) so route can respond with diagnostics
+    return { jobs: [], attempts };
+  }
+
+  const $ = cheerio.load(html);
+  const jobs = [];
+
+  // Try multiple selectors and heuristics so we can handle variations in markup.
+  const candidates = $(".job-card, .job-item, .career-job, .listing-item, .result-item, li");
+
+  candidates.each((_, el) => {
+    const $el = $(el);
+
+    // Prefer explicit anchors that look like job links
+    let anchor = $el.is("a") ? $el : $el.find('a[href*="/job"], a[href*="/jobs"], a').first();
+
+    // Fallback: search upward for an anchor in parent nodes
+    if (!anchor || !anchor.length) {
+      anchor = $el.closest("a");
     }
 
-    console.log(`[SCRAPER] Found ${jobs.length} MyCareersPH job(s)`);
-    return jobs;
-  } catch (err) {
-    console.error("[SCRAPER] Error:", err.message || err);
-    throw err;
+    // Title heuristics
+    let title =
+      $el.find(".job-title, .title, h2, h3").first().text().trim() ||
+      anchor?.find("h2, h3, .title").first().text().trim() ||
+      anchor?.text().trim();
+
+    // Company heuristics
+    let company =
+      $el.find(".company-name, .company, .job-company, .company__name").first().text().trim() ||
+      $el.find(".company").text().trim();
+
+    // Location heuristics
+    let location =
+      $el.find(".job-location, .location, .job-meta, .location__name").first().text().trim() || "";
+
+    // Link handling
+    let href = anchor?.attr("href") || "";
+    if (href && !href.startsWith("http")) {
+      if (!href.startsWith("/")) href = "/" + href;
+      href = "https://mycareers.ph" + href;
+    }
+
+    // Normalize
+    title = (title || "").replace(/\s+/g, " ").trim();
+    company = (company || "").replace(/\s+/g, " ").trim();
+
+    if (title && company) {
+      jobs.push({ title, company, location, link: href || targetURL });
+    }
+  });
+
+  // As a last resort, try to extract job-like anchors anywhere on the page
+  if (jobs.length === 0) {
+    $("a[href*='/job']").each((_, a) => {
+      const $a = $(a);
+      const title = $a.text().trim() || $a.attr("title") || "";
+      const href = $a.attr("href") || "";
+      if (title) {
+        let link = href;
+        if (link && !link.startsWith("http")) {
+          if (!link.startsWith("/")) link = "/" + link;
+          link = "https://mycareers.ph" + link;
+        }
+        jobs.push({ title: title.replace(/\s+/g, " ").trim(), company: "", location: "", link });
+      }
+    });
   }
+
+  console.log(`[SCRAPER] Found ${jobs.length} MyCareersPH job(s) — attempts:`, attempts.map(a => ({ url: a.url, status: a.status, error: a.error })));
+  return { jobs, attempts };
 }
 
 /* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
@@ -483,37 +506,62 @@ api.get(
   '/jobs/scrape',
   asyncH(async (_req, res) => {
     try {
-      const scraped = await scrapeAviationJobs();
+      const result = await scrapeAviationJobs();
+      // result: { jobs: [...], attempts: [...] } or empty jobs if failed
+      const scraped = Array.isArray(result) ? result : (result.jobs || []);
+      const attempts = result.attempts || [];
 
-      // Optionally save to DB (skip duplicates) -- check companyName and link
+      // Optionally save to DB (skip duplicates) -- check link or (title + companyName)
       let created = 0;
+      let skipped = 0;
+      const errors = [];
       for (const j of scraped) {
-        const exists =
-          (j.link ? await Job.findOne({ link: j.link }) : null) ||
-          (j.title ? await Job.findOne({ title: j.title, companyName: j.company }) : null);
-        if (!exists) {
-          await Job.create({
-            title: j.title,
-            description: 'External aviation job listing scraped from MyCareers.ph.',
-            companyName: j.company,
-            location: j.location,
-            link: j.link,
-            status: 'active',
-            isApproved: true,
-          });
-          created++;
+        try {
+          const exists =
+            (j.link ? await Job.findOne({ link: j.link }) : null) ||
+            (j.title ? await Job.findOne({ title: j.title, companyName: j.company }) : null);
+          if (!exists) {
+            await Job.create({
+              title: j.title,
+              description: 'External aviation job listing scraped from MyCareers.ph.',
+              companyName: j.company,
+              location: j.location,
+              link: j.link,
+              status: 'active',
+              isApproved: true,
+            });
+            created++;
+          } else {
+            skipped++;
+          }
+        } catch (e) {
+          errors.push({ job: j, error: e.message || String(e) });
+          console.error('[SCRAPER] failed to save job:', j.title, e.message || e);
         }
       }
 
-      res.json({
+      // If no jobs were found and there were fetch attempts with errors, include them for debugging.
+      const resp = {
         message: 'Scraping complete',
-        count: scraped.length,
+        found: scraped.length,
         created,
+        skipped,
+        errorsCount: errors.length,
         preview: scraped.slice(0, 5),
-      });
+        attempts: attempts.slice(0, 5),
+      };
+
+      // If nothing was found and there were attempt errors, return 200 with diagnostics instead of a 500
+      if (scraped.length === 0 && attempts.length > 0) {
+        console.warn('[SCRAPER] No jobs found; returning diagnostics');
+        return res.json({ ok: false, note: 'No jobs scraped; see attempts for details', ...resp });
+      }
+
+      res.json({ ok: true, ...resp });
     } catch (error) {
-      console.error('Scrape error:', error.message || error);
-      res.status(500).json({ error: 'Failed to scrape jobs' });
+      console.error('Scrape error (unexpected):', error.message || error);
+      // Return diagnostics (avoid throwing 500 with vague message)
+      res.status(200).json({ ok: false, error: String(error.message || error) });
     }
   })
 );
@@ -521,7 +569,7 @@ api.get(
 /* ----------------------------- STANDARD JOB ROUTES ---------------------------- */
 api.get(
   '/jobs',
-  asyncH(async (req, res) => {
+  asyncH(async req, res => {
     const q = {};
     if (req.query.q) q.$text = { $search: req.query.q };
     if (req.query.jobType) q.jobType = req.query.jobType;
@@ -808,13 +856,45 @@ api.delete(
   })
 );
 
+/* ------------------------------- STUDENT STATS ------------------------------ */
+api.get(
+  '/student/stats',
+  requireAuth,
+  asyncH(async (req, res) => {
+    try {
+      const user = await User.findById(req.userId);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      // Available jobs: count all active jobs (uniform with admin)
+      const availableJobs = await Job.countDocuments({ status: 'active' });
+
+      // Jobs viewed (search logs)
+      const viewed = await SearchLog.countDocuments({ user: req.userId, role: /student/i });
+
+      // Companies
+      const companies = await Company.countDocuments();
+
+      res.json({
+        success: true,
+        availableJobs,
+        jobsViewed: viewed,
+        companies,
+      });
+    } catch (err) {
+      console.error('Student stats error:', err);
+      res.status(500).json({ success: false, error: 'Server error' });
+    }
+  })
+);
+
 // Add admin stats endpoint (uniform with student stats)
 api.get(
   '/admin/stats',
   requireAdmin,
   asyncH(async (_req, res) => {
     try {
-      const availableJobs = await Job.countDocuments({ isApproved: true, status: 'active' });
+      // Available jobs: count all active jobs (same logic as student)
+      const availableJobs = await Job.countDocuments({ status: 'active' });
       const companies = await Company.countDocuments();
       const users = await User.countDocuments();
       const totalSearches = await SearchLog.countDocuments();
@@ -858,37 +938,6 @@ api.post(
       await SearchLog.create({ term, user: userId, role });
     } catch (_) {}
     res.json({ ok: true });
-  })
-);
-
-/* ------------------------------- STUDENT STATS ------------------------------ */
-api.get(
-  '/student/stats',
-  requireAuth,
-  asyncH(async (req, res) => {
-    try {
-      const user = await User.findById(req.userId);
-      if (!user) return res.status(404).json({ error: 'User not found' });
-
-      // Available jobs
-      const availableJobs = await Job.countDocuments({ isApproved: true, status: 'active' });
-
-      // Jobs viewed (search logs)
-      const viewed = await SearchLog.countDocuments({ user: req.userId, role: /student/i });
-
-      // Companies
-      const companies = await Company.countDocuments();
-
-      res.json({
-        success: true,
-        availableJobs,
-        jobsViewed: viewed,
-        companies,
-      });
-    } catch (err) {
-      console.error('Student stats error:', err);
-      res.status(500).json({ success: false, error: 'Server error' });
-    }
   })
 );
 
