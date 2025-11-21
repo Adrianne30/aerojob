@@ -395,24 +395,26 @@ async function scrapeAviationJobs(opts = {}) {
      opts.site === 'indeed' ? `https://ph.indeed.com/jobs?q=${encodeURIComponent(q)}` :
      `https://mycareers.ph/job-search?query=${encodeURIComponent(q)}`);
 
-  const primaryIsScraper = (!!API_KEY && !process.env.SCRAPER_PROXY_URL);
-  let scraperURL = primaryIsScraper
-    ? `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`
-    : targetURL;
+const primaryIsScraper = (!!API_KEY && !process.env.SCRAPER_PROXY_URL);
 
-  // If SCRAPER_PROXY_URL is set, route requests through it.
-  // SCRAPER_PROXY_URL may include a "{url}" placeholder or be a prefix to append ?url=
-  if (process.env.SCRAPER_PROXY_URL) {
-    const proxy = String(process.env.SCRAPER_PROXY_URL);
-    if (proxy.includes('{url}')) {
-      scraperURL = proxy.replace('{url}', encodeURIComponent(scraperURL));
-    } else {
-      // append as query param
-      const sep = proxy.includes('?') ? '&' : '?';
-      scraperURL = `${proxy}${sep}url=${encodeURIComponent(scraperURL)}`;
-    }
-    console.log('[SCRAPER] Using proxy:', process.env.SCRAPER_PROXY_URL);
+let scraperURL = targetURL;
+
+if (primaryIsScraper) {
+  scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`;
+}
+
+// If SCRAPER_PROXY_URL exists, override everything
+if (process.env.SCRAPER_PROXY_URL) {
+  const proxy = process.env.SCRAPER_PROXY_URL;
+  if (proxy.includes("{url}")) {
+    scraperURL = proxy.replace("{url}", encodeURIComponent(targetURL));
+  } else {
+    const sep = proxy.includes("?") ? "&" : "?";
+    scraperURL = `${proxy}${sep}url=${encodeURIComponent(targetURL)}`;
   }
+  console.log("[SCRAPER] Using proxy:", scraperURL);
+}
+
 
   console.log("[SCRAPER] Fetching jobs from", targetURL, primaryIsScraper ? "(via ScraperAPI)" : "(direct fetch)");
 
