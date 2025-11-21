@@ -21,6 +21,8 @@ const app = express();
 app.set('trust proxy', 1);
 const axios = require("axios");
 const cheerio = require("cheerio");
+const https = require('https');
+const dns = require('dns');
 
 /* ----------------------------- Security & Logging ----------------------------- */
 app.use(helmet({ crossOriginResourcePolicy: false }));
@@ -437,22 +439,77 @@ async function scrapeAviationJobs(opts = {}) {
   // helper: sleep/backoff
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  // --- Network agent / proxy setup ---
+  // Support HTTPS_PROXY / HTTP_PROXY env (preferred) and optional FORCE_IPV4 to force IPv4 lookup.
+  let proxyAgent = null;
+  const proxyFromEnv = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || null;
+  if (proxyFromEnv) {
+    try {
+      const { HttpsProxyAgent } = require('https-proxy-agent');
+      proxyAgent = new HttpsProxyAgent(proxyFromEnv);
+      console.log('[SCRAPER] Using proxy from env:', proxyFromEnv);
+    } catch (e) {
+      console.warn('[SCRAPER] https-proxy-agent not available, proxy disabled:', e.message);
+      proxyAgent = null;
+    }
+  }
+
+  // Optional IPv4-only agent to avoid IPv6/DNS/TLS issues on some hosts (enable with FORCE_IPV4=true)
+  let ipv4Agent = null;
+  if (String(process.env.FORCE_IPV4 || '').toLowerCase() === 'true') {
+    try {
+      ipv4Agent = new https.Agent({
+        keepAlive: true,
+        lookup: (hostname, options, callback) => dns.lookup(hostname, { family: 4 }, callback),
+      });
+      console.log('[SCRAPER] IPv4 agent enabled (FORCE_IPV4=true)');
+    } catch (e) {
+      console.warn('[SCRAPER] Failed to create IPv4 agent:', e.message);
+      ipv4Agent = null;
+    }
+  }
+
+  const SCRAPER_TIMEOUT = parseInt(process.env.SCRAPER_TIMEOUT || '45000', 10);
+  const MAX_CONTENT = 8 * 1024 * 1024; // 8MB
+
+  // exponential backoff with jitter
+  function backoff(attempt) {
+    const base = 500 * Math.pow(2, attempt - 1);
+    const jitter = Math.floor(Math.random() * 300);
+    return base + jitter;
+  }
+
   async function tryFetchWithRetries(url, maxAttempts = 3) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const now = new Date().toISOString();
       try {
-        const resp = await axios.get(url, {
+        const axiosOpts = {
           headers: {
             "User-Agent":
               "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
             "Accept-Language": "en-US,en;q=0.9",
             Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           },
-          timeout: 30000, // increased timeout
+          timeout: SCRAPER_TIMEOUT,
           responseType: 'text',
-          maxContentLength: 6 * 1024 * 1024, // 6MB
+          maxContentLength: MAX_CONTENT,
           maxRedirects: 5,
-        });
+        };
+
+        // choose appropriate agent: IPv4 agent preferred, else proxy agent, else default
+        if (ipv4Agent) {
+          axiosOpts.httpsAgent = ipv4Agent;
+          axiosOpts.proxy = false;
+          console.log(`[SCRAPER] Attempt ${attempt} -> ${url} (using IPv4 agent)`);
+        } else if (proxyAgent) {
+          axiosOpts.httpsAgent = proxyAgent;
+          axiosOpts.proxy = false;
+          console.log(`[SCRAPER] Attempt ${attempt} -> ${url} (using proxy)`);
+        } else {
+          console.log(`[SCRAPER] Attempt ${attempt} -> ${url} (default agent)`);
+        }
+
+        const resp = await axios.get(url, axiosOpts);
         attempts.push({ url, status: resp.status, length: String(resp.data || '').length, attempt, at: now });
         return resp.data;
       } catch (err) {
@@ -465,7 +522,7 @@ async function scrapeAviationJobs(opts = {}) {
           snippet: err.response?.data ? String(err.response?.data).slice(0, 200) : undefined,
         };
         attempts.push(info);
-        if (attempt < maxAttempts) await sleep(500 * Math.pow(2, attempt - 1));
+        if (attempt < maxAttempts) await sleep(backoff(attempt));
       }
     }
     return null;
