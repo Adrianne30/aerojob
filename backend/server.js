@@ -395,7 +395,7 @@ async function scrapeAviationJobs(opts = {}) {
      opts.site === 'indeed' ? `https://ph.indeed.com/jobs?q=${encodeURIComponent(q)}` :
      `https://mycareers.ph/job-search?query=${encodeURIComponent(q)}`);
 
-  const primaryIsScraper = !!API_KEY;
+  const primaryIsScraper = (!!API_KEY && !process.env.SCRAPER_PROXY_URL);
   let scraperURL = primaryIsScraper
     ? `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`
     : targetURL;
