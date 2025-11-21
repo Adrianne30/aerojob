@@ -384,7 +384,7 @@ api.get(
 );
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
-// REPLACED: old scrapeAviationJobs -> new generic/robust scraper
+// REPLACED: old scrapeAviationJobs -> new generic/robust scraper with retries/backoff
 async function scrapeAviationJobs(opts = {}) {
   const API_KEY = process.env.SCRAPERAPI_KEY;
   const q = String(opts.q || 'aviation').trim();
@@ -402,36 +402,55 @@ async function scrapeAviationJobs(opts = {}) {
   console.log("[SCRAPER] Fetching jobs from", targetURL, primaryIsScraper ? "(via ScraperAPI)" : "(direct fetch)");
 
   const attempts = [];
-  async function tryFetch(url) {
-    try {
-      const resp = await axios.get(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-        timeout: 15000,
-        responseType: 'text',
-        maxContentLength: 4 * 1024 * 1024,
-      });
-      attempts.push({ url, status: resp.status, length: String(resp.data || '').length });
-      return resp.data;
-    } catch (err) {
-      attempts.push({
-        url,
-        error: err.message || String(err),
-        status: err.response?.status,
-        snippet: err.response?.data ? String(err.response.data).slice(0, 200) : undefined,
-      });
-      return null;
+
+  // helper: sleep/backoff
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function tryFetchWithRetries(url, maxAttempts = 3) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const now = new Date().toISOString();
+      try {
+        const resp = await axios.get(url, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+            "Accept-Language": "en-US,en;q=0.9",
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+          timeout: 30000, // increased timeout
+          responseType: 'text',
+          maxContentLength: 6 * 1024 * 1024, // 6MB
+          maxRedirects: 5,
+        });
+        attempts.push({ url, status: resp.status, length: String(resp.data || '').length, attempt, at: now });
+        return resp.data;
+      } catch (err) {
+        const info = {
+          url,
+          attempt,
+          at: now,
+          error: err.message || String(err),
+          status: err.response?.status,
+          snippet: err.response?.data ? String(err.response.data).slice(0, 200) : undefined,
+        };
+        attempts.push(info);
+        // brief exponential backoff before next retry
+        if (attempt < maxAttempts) await sleep(500 * Math.pow(2, attempt - 1));
+      }
     }
+    return null;
   }
 
-  let html = await tryFetch(scraperURL);
+  // Try scraperURL first (if present), then fall back to direct targetURL with retries.
+  let html = await tryFetchWithRetries(scraperURL, 2);
   if (!html && primaryIsScraper) {
     console.warn("[SCRAPER] ScraperAPI attempt failed, falling back to direct fetch");
-    html = await tryFetch(targetURL);
+    html = await tryFetchWithRetries(targetURL, 3);
+  } else if (!html) {
+    // if no API key and first attempt failed, try a few more times directly
+    html = await tryFetchWithRetries(targetURL, 3);
   }
+
   if (!html) {
     console.error("[SCRAPER] All fetch attempts failed:", attempts);
     return { jobs: [], attempts };
@@ -575,7 +594,7 @@ async function scrapeAviationJobs(opts = {}) {
     }
   }
 
-  console.log(`[SCRAPER] Found ${unique.length} job(s) — attempts:`, attempts.map(a => ({ url: a.url, status: a.status, error: a.error })));
+  console.log(`[SCRAPER] Found ${unique.length} job(s) — attempts:`, attempts.map(a => ({ url: a.url, status: a.status, error: a.error, attempt: a.attempt, at: a.at })));
   return { jobs: unique, attempts };
 
   // local helper to avoid using global variable names accidentally
@@ -633,7 +652,7 @@ api.get(
 
         const results = await Promise.allSettled(ops);
         for (const r of results) {
-          if (r.status === 'fulfilled') {
+          if r.status === 'fulfilled') {
             const v = r.value;
             if (v.status === 'created') created++;
             else if (v.status === 'skipped') skipped++;
