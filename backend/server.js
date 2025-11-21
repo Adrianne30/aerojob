@@ -652,7 +652,7 @@ api.get(
 
         const results = await Promise.allSettled(ops);
         for (const r of results) {
-          if r.status === 'fulfilled') {
+          if (r.status === 'fulfilled') {
             const v = r.value;
             if (v.status === 'created') created++;
             else if (v.status === 'skipped') skipped++;
