@@ -47,11 +47,8 @@ const Profile = () => {
 
   const formatForSubmit = (data) => {
     const payload = { ...data };
-
-    // combine first/last into fullName (your schema)
     payload.fullName = `${data.firstName || ''} ${data.lastName || ''}`.trim();
 
-    // only send fields your Profile schema supports
     const allowed = [
       'fullName',
       'email',
@@ -369,7 +366,7 @@ const Profile = () => {
                       {...register('course')}
                       className="input"
                       defaultValue={profile.course || ''}
-                      disabled={!editing}
+                      disabled={editing}
                     >
                       <option value="">Select your course</option>
 
