@@ -103,14 +103,19 @@ export default function Dashboard() {
           adminAPI.getStats().catch(() => null),
           usersAPI.list().catch(() => []),
         ]);
-        // Try to safely fetch jobs list from common adminAPI methods (optional chaining to avoid runtime errors).
+        // Try to safely fetch jobs list from common adminAPI methods.
+        // Call only if the method exists and is a function to avoid calling .catch on undefined.
         let jobsList = null;
         try {
-          jobsList =
-            (await adminAPI.listJobs?.().catch(() => null)) ||
-            (await adminAPI.getJobs?.().catch(() => null)) ||
-            (await adminAPI.list?.().catch(() => null)) ||
-            null;
+          if (typeof adminAPI.listJobs === 'function') {
+            jobsList = await adminAPI.listJobs().catch(() => null);
+          }
+          if (!Array.isArray(jobsList) && typeof adminAPI.getJobs === 'function') {
+            jobsList = await adminAPI.getJobs().catch(() => null);
+          }
+          if (!Array.isArray(jobsList) && typeof adminAPI.list === 'function') {
+            jobsList = await adminAPI.list().catch(() => null);
+          }
         } catch (e) {
           jobsList = null;
         }
