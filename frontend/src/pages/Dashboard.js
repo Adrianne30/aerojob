@@ -103,35 +103,60 @@ export default function Dashboard() {
           adminAPI.getStats().catch(() => null),
           usersAPI.list().catch(() => []),
         ]);
+        // Try to safely fetch jobs list from common adminAPI methods (optional chaining to avoid runtime errors).
+        let jobsList = null;
+        try {
+          jobsList =
+            (await adminAPI.listJobs?.().catch(() => null)) ||
+            (await adminAPI.getJobs?.().catch(() => null)) ||
+            (await adminAPI.list?.().catch(() => null)) ||
+            null;
+        } catch (e) {
+          jobsList = null;
+        }
         if (!mounted) return;
-
+ 
         const nextStats = {
-          totalJobs: Number(s?.totalJobs || 0),
+          // prefer server value, otherwise fall back to jobsList length (if available)
+          totalJobs: Number(s?.totalJobs ?? (Array.isArray(jobsList) ? jobsList.length : 0)),
           totalCompanies: Number(s?.totalCompanies || 0),
           totalUsers: Number(s?.totalUsers || 0),
           pendingApproval: Number(s?.pendingApproval || 0),
-          newUsers: Number(s?.newUsers || 0),
+          // prefer server value, otherwise compute from users list (last 30 days)
+          newUsers: Number(s?.newUsers ?? 0),
           roleCounts: s?.roleCounts || { students: 0, alumni: 0, admins: 0 },
           topSearches: Array.isArray(s?.topSearches) ? s.topSearches : [],
           studentsByCourse: Array.isArray(s?.studentsByCourse)
             ? s.studentsByCourse
             : [],
         };
-
-        // 🧮 Compute fallback role counts if not included in API
-        const computedRoleCounts = (() => {
-          const counts = { admins: 0, students: 0, alumni: 0 };
-          if (Array.isArray(users)) {
-            for (const u of users) {
-              const role = (u?.role || u?.userType || '').toLowerCase();
-              if (role === 'admin') counts.admins += 1;
-              else if (role === 'student') counts.students += 1;
-              else if (role === 'alumni') counts.alumni += 1;
-            }
-          }
-          return counts;
-        })();
-
+ 
+        // If server didn't provide newUsers, compute from users list (createdAt / created_at / created)
+        if (!Number(s?.newUsers) && Array.isArray(users)) {
+          const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+          const computedNewUsers = users.reduce((acc, u) => {
+            const created = u?.createdAt ?? u?.created_at ?? u?.created ?? null;
+            if (!created) return acc;
+            const ts = new Date(created).getTime();
+            return acc + (isNaN(ts) ? 0 : ts >= cutoff ? 1 : 0);
+          }, 0);
+          nextStats.newUsers = Number(computedNewUsers || 0);
+        }
+ 
+         // 🧮 Compute fallback role counts if not included in API
+         const computedRoleCounts = (() => {
+           const counts = { admins: 0, students: 0, alumni: 0 };
+           if (Array.isArray(users)) {
+             for (const u of users) {
+               const role = (u?.role || u?.userType || '').toLowerCase();
+               if (role === 'admin') counts.admins += 1;
+               else if (role === 'student') counts.students += 1;
+               else if (role === 'alumni') counts.alumni += 1;
+             }
+           }
+           return counts;
+         })();
+ 
         // 🧮 Compute fallback students-by-course if missing
         const computedStudentsByCourse = (() => {
           const map = {};
@@ -149,28 +174,28 @@ export default function Dashboard() {
             .sort((a, b) => b.total - a.total)
             .slice(0, 15);
         })();
-
+ 
         nextStats.roleCounts =
           Object.values(nextStats.roleCounts || {}).some((v) => Number(v) > 0)
             ? nextStats.roleCounts
             : computedRoleCounts;
-
+ 
         nextStats.studentsByCourse =
           Array.isArray(nextStats.studentsByCourse) &&
           nextStats.studentsByCourse.length > 0
             ? nextStats.studentsByCourse
             : computedStudentsByCourse;
-
+ 
         if (!nextStats.totalUsers && Array.isArray(users)) {
           nextStats.totalUsers = users.length;
         }
-
+ 
         setStats(nextStats);
       } else if (isStudentOrAlumni()) {
         // 🧠 STUDENT / ALUMNI DASHBOARD
         const s = await studentAPI.getStats().catch(() => null);
         if (!mounted) return;
-
+ 
         setStudentStats({
           availableJobs: s?.availableJobs || 0,
           jobsViewed: s?.jobsViewed || 0,
@@ -332,7 +357,7 @@ export default function Dashboard() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard icon={Briefcase} title="Available Jobs" value={studentStats.availableJobs} />
+        <StatCard icon={Briefcase} title="Total Jobs" value={stats.totalJobs} />
         <StatCard icon={FileText} title="Pending Approval" value={stats.pendingApproval} />
         <StatCard icon={Users} title="Total Users" value={stats.totalUsers} />
         <StatCard icon={UserCheck} title="New Users (30d)" value={stats.newUsers} />
