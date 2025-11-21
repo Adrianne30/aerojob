@@ -384,7 +384,6 @@ api.get(
 );
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
-// REPLACED: old scrapeAviationJobs -> new generic/robust scraper with retries/backoff
 async function scrapeAviationJobs(opts = {}) {
   const API_KEY = process.env.SCRAPERAPI_KEY;
   const q = String(opts.q || 'aviation').trim();
@@ -395,13 +394,45 @@ async function scrapeAviationJobs(opts = {}) {
      `https://mycareers.ph/job-search?query=${encodeURIComponent(q)}`);
 
   const primaryIsScraper = !!API_KEY;
-  const scraperURL = primaryIsScraper
+  let scraperURL = primaryIsScraper
     ? `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`
     : targetURL;
+
+  // If SCRAPER_PROXY_URL is set, route requests through it.
+  // SCRAPER_PROXY_URL may include a "{url}" placeholder or be a prefix to append ?url=
+  if (process.env.SCRAPER_PROXY_URL) {
+    const proxy = String(process.env.SCRAPER_PROXY_URL);
+    if (proxy.includes('{url}')) {
+      scraperURL = proxy.replace('{url}', encodeURIComponent(scraperURL));
+    } else {
+      // append as query param
+      const sep = proxy.includes('?') ? '&' : '?';
+      scraperURL = `${proxy}${sep}url=${encodeURIComponent(scraperURL)}`;
+    }
+    console.log('[SCRAPER] Using proxy:', process.env.SCRAPER_PROXY_URL);
+  }
 
   console.log("[SCRAPER] Fetching jobs from", targetURL, primaryIsScraper ? "(via ScraperAPI)" : "(direct fetch)");
 
   const attempts = [];
+
+  // If HTML provided in opts (base64 or raw), use it directly and skip fetching.
+  if (opts.html) {
+    let providedHtml = String(opts.html || '');
+    try {
+      // try base64 decode first (client can send base64 to avoid URL-length issues)
+      const decoded = Buffer.from(providedHtml, 'base64').toString('utf8');
+      // if decoding produced non-empty and looks like HTML, use it
+      if (decoded && /<\s*html|<\s*div|<\s*body|<\/\w+>/.test(decoded)) {
+        providedHtml = decoded;
+      }
+    } catch (_) {
+      // ignore decode error, use raw
+    }
+    attempts.push({ url: '(provided-html)', note: 'skipped-fetch, parsing provided HTML', length: providedHtml.length, at: new Date().toISOString() });
+    // set html variable so parser below continues unchanged
+    var html = providedHtml;
+  }
 
   // helper: sleep/backoff
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -431,29 +462,33 @@ async function scrapeAviationJobs(opts = {}) {
           at: now,
           error: err.message || String(err),
           status: err.response?.status,
-          snippet: err.response?.data ? String(err.response.data).slice(0, 200) : undefined,
+          snippet: err.response?.data ? String(err.response?.data).slice(0, 200) : undefined,
         };
         attempts.push(info);
-        // brief exponential backoff before next retry
         if (attempt < maxAttempts) await sleep(500 * Math.pow(2, attempt - 1));
       }
     }
     return null;
   }
 
-  // Try scraperURL first (if present), then fall back to direct targetURL with retries.
-  let html = await tryFetchWithRetries(scraperURL, 2);
-  if (!html && primaryIsScraper) {
-    console.warn("[SCRAPER] ScraperAPI attempt failed, falling back to direct fetch");
-    html = await tryFetchWithRetries(targetURL, 3);
-  } else if (!html) {
-    // if no API key and first attempt failed, try a few more times directly
-    html = await tryFetchWithRetries(targetURL, 3);
-  }
+  // Only fetch if html wasn't provided above
+  if (typeof html === 'undefined') {
+    let fetched = await tryFetchWithRetries(scraperURL, 2);
+    if (!fetched && primaryIsScraper) {
+      console.warn("[SCRAPER] ScraperAPI attempt failed, falling back to direct fetch");
+      fetched = await tryFetchWithRetries(targetURL, 3);
+    } else if (!fetched) {
+      fetched = await tryFetchWithRetries(targetURL, 3);
+    }
 
-  if (!html) {
-    console.error("[SCRAPER] All fetch attempts failed:", attempts);
-    return { jobs: [], attempts };
+    if (!fetched) {
+      console.error("[SCRAPER] All fetch attempts failed:", attempts);
+      return {
+        jobs: [], attempts,
+        note: 'If Railway blocks outbound TLS you can provide page HTML via the html query/body (base64) or set SCRAPER_PROXY_URL to route through a proxy.'
+      };
+    }
+    html = fetched;
   }
 
   const $ = cheerio.load(html);
@@ -509,8 +544,7 @@ async function scrapeAviationJobs(opts = {}) {
     const href = $(a).attr('href') || '';
     const text = ($(a).text() || '').trim();
     if (href && (href.toLowerCase().includes('/job') || href.toLowerCase().includes('job') || text.length < 200)) {
-      const el = a;
-      candidates.add(el);
+      candidates.add(a);
     }
   });
 
@@ -595,7 +629,7 @@ async function scrapeAviationJobs(opts = {}) {
   }
 
   console.log(`[SCRAPER] Found ${unique.length} job(s) — attempts:`, attempts.map(a => ({ url: a.url, status: a.status, error: a.error, attempt: a.attempt, at: a.at })));
-  return { jobs: unique, attempts };
+  return { jobs: unique, attempts, note: undefined };
 
   // local helper to avoid using global variable names accidentally
   function blotify(s){ return String(s||'').replace(/\s+/g,' ').trim(); }
@@ -607,19 +641,23 @@ api.get(
   asyncH(async (req, res) => {
     try {
       // accept query params: q (search term), url (target full url), site (alias), save=true, max (limit)
+      // Also accept `html` (base64 or raw) to parse provided HTML (useful if Railway blocks outbound TLS).
       const opts = {
         q: req.query.q,
         url: req.query.url,
         site: req.query.site,
         max: parseInt(req.query.max || '200', 10),
+        html: req.query.html, // optional: base64 or raw HTML
       };
       const result = await scrapeAviationJobs(opts);
       const scraped = Array.isArray(result) ? result : (result.jobs || []);
       const attempts = result.attempts || [];
 
+      // if scraper returned a note (e.g. proxy/html hint) include it
+      const note = result.note;
+
       const saveRequested = String(req.query.save || '').toLowerCase() === 'true';
       const MAX_SAVE = 50;
-
       let created = 0;
       let skipped = 0;
       const errors = [];
@@ -673,6 +711,7 @@ api.get(
         errorsCount: errors.length,
         saveRequested,
         savedLimit: saveRequested ? MAX_SAVE : 0,
+        note,
       };
 
       if (scraped.length === 0 && attempts.length > 0) {
