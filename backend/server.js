@@ -384,30 +384,35 @@ api.get(
 );
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
-async function scrapeAviationJobs() {
+// REPLACED: old scrapeAviationJobs -> new generic/robust scraper
+async function scrapeAviationJobs(opts = {}) {
   const API_KEY = process.env.SCRAPERAPI_KEY;
-  const targetURL = "https://mycareers.ph/job-search?query=aviation";
+  const q = String(opts.q || 'aviation').trim();
+  const targetURL =
+    opts.url ||
+    (opts.site === 'mycareers' ? `https://mycareers.ph/job-search?query=${encodeURIComponent(q)}` :
+     opts.site === 'indeed' ? `https://ph.indeed.com/jobs?q=${encodeURIComponent(q)}` :
+     `https://mycareers.ph/job-search?query=${encodeURIComponent(q)}`);
+
   const primaryIsScraper = !!API_KEY;
-  // use HTTPS and include render=true for JS sites
   const scraperURL = primaryIsScraper
     ? `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`
     : targetURL;
 
-  console.log("[SCRAPER] Fetching jobs from MyCareers.ph...", primaryIsScraper ? "(via ScraperAPI)" : "(direct fetch)");
+  console.log("[SCRAPER] Fetching jobs from", targetURL, primaryIsScraper ? "(via ScraperAPI)" : "(direct fetch)");
 
   const attempts = [];
-
   async function tryFetch(url) {
     try {
       const resp = await axios.get(url, {
         headers: {
           "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
           "Accept-Language": "en-US,en;q=0.9",
         },
-        timeout: 15000, // shorter timeout to avoid platform hang
+        timeout: 15000,
         responseType: 'text',
-        maxContentLength: 2 * 1024 * 1024, // 2MB max
+        maxContentLength: 4 * 1024 * 1024,
       });
       attempts.push({ url, status: resp.status, length: String(resp.data || '').length });
       return resp.data;
@@ -427,7 +432,6 @@ async function scrapeAviationJobs() {
     console.warn("[SCRAPER] ScraperAPI attempt failed, falling back to direct fetch");
     html = await tryFetch(targetURL);
   }
-
   if (!html) {
     console.error("[SCRAPER] All fetch attempts failed:", attempts);
     return { jobs: [], attempts };
@@ -435,49 +439,147 @@ async function scrapeAviationJobs() {
 
   const $ = cheerio.load(html);
   const jobs = [];
-  const candidates = $(".job-card, .job-item, .career-job, .listing-item, .result-item, li");
+  const seen = new Set();
+  const aviationKeywords = ['aviation','aerospace','pilot','airline','flight','aeronautic','aircraft','avionics','air safety','air traffic'];
 
-  candidates.each((_, el) => {
-    const $el = $(el);
-    let anchor = $el.is("a") ? $el : $el.find('a[href*="/job"], a[href*="/jobs"], a').first();
-    if (!anchor || !anchor.length) anchor = $el.closest("a");
-    let title =
-      $el.find(".job-title, .title, h2, h3").first().text().trim() ||
-      anchor?.find("h2, h3, .title").first().text().trim() ||
-      anchor?.text().trim();
-    let company =
-      $el.find(".company-name, .company, .job-company, .company__name").first().text().trim() ||
-      $el.find(".company").text().trim();
-    let location =
-      $el.find(".job-location, .location, .job-meta, .location__name").first().text().trim() || "";
-    let href = anchor?.attr("href") || "";
-    if (href && !href.startsWith("http")) {
-      if (!href.startsWith("/")) href = "/" + href;
-      href = "https://mycareers.ph" + href;
-    }
-    title = (title || "").replace(/\s+/g, " ").trim();
-    company = (company || "").replace(/\s+/g, " ").trim();
-    if (title && company) jobs.push({ title, company, location, link: href || targetURL });
-  });
-
-  if (jobs.length === 0) {
-    $("a[href*='/job']").each((_, a) => {
-      const $a = $(a);
-      const title = $a.text().trim() || $a.attr("title") || "";
-      const href = $a.attr("href") || "";
-      if (title) {
-        let link = href;
-        if (link && !link.startsWith("http")) {
-          if (!link.startsWith("/")) link = "/" + link;
-          link = "https://mycareers.ph" + link;
-        }
-        jobs.push({ title: title.replace(/\s+/g, " ").trim(), company: "", location: "", link });
-      }
-    });
+  function looksAviation(text = '') {
+    const s = (text || '').toLowerCase();
+    return aviationKeywords.some(k => s.includes(k));
   }
 
-  console.log(`[SCRAPER] Found ${jobs.length} job(s) — attempts:`, attempts.map(a => ({ url: a.url, status: a.status, error: a.error })));
-  return { jobs, attempts };
+  // 1) Try to parse JSON-LD JobPosting(s)
+  $('script[type="application/ld+json"]').each((i, el) => {
+    try {
+      const data = JSON.parse($(el).contents().text() || '{}');
+      const arr = Array.isArray(data) ? data : [data];
+      for (const item of arr) {
+        if (!item) continue;
+        if (item['@type'] === 'JobPosting' || (item['@type'] && String(item['@type']).toLowerCase().includes('job'))) {
+          const title = item.title || item.name || '';
+          const company = (item.hiringOrganization && (item.hiringOrganization.name || item.hiringOrganization)) || item.company || '';
+          const location = item.jobLocation?.address?.addressLocality || item.jobLocation || item.address || '';
+          const link = item.url || item.href || targetURL;
+          const key = `${title}|${company}|${link}`;
+          if (title && (looksAviation(title) || looksAviation(company) || looksAviation(item.description))) {
+            if (!seen.has(key)) {
+              seen.add(key);
+              jobs.push({ title: title.trim(), company: String(company).trim(), location: String(location).trim(), link });
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  });
+
+  // 2) Heuristic DOM parsing: common job-card selectors + generic anchors/articles/list items
+  const candidateSelectors = [
+    '.job-card', '.job-item', '.career-job', '.listing-item', '.result-item', '.job', '.posting', '.job-listing',
+    'article', 'li', '.job-row', '.job-teaser', '.result',
+  ];
+
+  const anchors = $('a[href]').toArray();
+  const candidates = new Set();
+
+  // Add nodes matching selectors
+  candidateSelectors.forEach(sel => {
+    $(sel).each((_, el) => candidates.add(el));
+  });
+
+  // Add anchors that look like job links
+  anchors.forEach(a => {
+    const href = $(a).attr('href') || '';
+    const text = ($(a).text() || '').trim();
+    if (href && (href.toLowerCase().includes('/job') || href.toLowerCase().includes('job') || text.length < 200)) {
+      const el = a;
+      candidates.add(el);
+    }
+  });
+
+  // Process candidates
+  for (const el of Array.from(candidates)) {
+    const $el = $(el);
+    // try to find an anchor within or closest anchor
+    let anchor = $el.is('a') ? $el : $el.find('a[href]').first();
+    if (!anchor || !anchor.length) anchor = $el.closest('a').first();
+
+    // Title heuristics
+    let title =
+      ($el.find('.job-title, .title, h2, h3, .posting-title, .jobname').first().text() || '').trim() ||
+      (anchor && ($(anchor).find('h2, h3, .title').first().text() || $(anchor).text())) ||
+      ($el.attr('title') || '');
+
+    // Company heuristics
+    let company =
+      ($el.find('.company-name, .company, .job-company, .company__name, .employer').first().text() || '').trim() ||
+      ($el.find('.company').text() || '').trim();
+
+    // Location heuristics
+    let location =
+      ($el.find('.job-location, .location, .job-meta, .location__name, .job-location__name, .place').first().text() || '').trim();
+
+    // link
+    let href = anchor && $(anchor).attr('href') || '';
+    if (href && !href.startsWith('http')) {
+      if (!href.startsWith('/')) href = '/' + href;
+      const base = new URL(targetURL).origin;
+      href = base + href;
+    }
+    // fallback link: try data-href or onclick
+    if (!href) {
+      href = $el.attr('data-href') || $el.attr('data-url') || '';
+      if (href && !href.startsWith('http')) {
+        const base = new URL(targetURL).origin;
+        if (!href.startsWith('/')) href = '/' + href;
+        href = base + href;
+      }
+    }
+
+    title = (title || '').replace(/\s+/g, ' ').trim();
+    company = (company || '').replace(/\s+/g, ' ').trim();
+
+    // Try to extract text blob and check for aviation terms
+    const blob = [title, company, location, $el.text()].filter(Boolean).join(' ').slice(0, 800);
+    if (!title && anchor) {
+      title = ($(anchor).text() || '').trim();
+    }
+    if (!title && blob.length > 0) {
+      const m = blob.match(/^[^\n]{3,120}/);
+      title = title || (m ? m[0].trim() : '');
+    }
+
+    if (!title && !company) continue;
+    // require some aviation relevance
+    if (!looksAviation(blotify(blob))) {
+      // allow if explicit keyword in title/company
+      if (!looksAviation(title) && !looksAviation(company)) continue;
+    }
+
+    const key = `${title}|${company}|${href}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      jobs.push({ title, company, location: location || '', link: href || targetURL });
+    }
+    // stop early if too many
+    if (jobs.length >= (opts.max || 200)) break;
+  }
+
+  // Dedupe by normalized title+company+link
+  function normalize(s='') { return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); }
+  const unique = [];
+  const uniqSet = new Set();
+  for (const j of jobs) {
+    const k = `${normalize(j.title)}|${normalize(j.company)}|${normalize(j.link)}`;
+    if (!uniqSet.has(k)) {
+      uniqSet.add(k);
+      unique.push(j);
+    }
+  }
+
+  console.log(`[SCRAPER] Found ${unique.length} job(s) — attempts:`, attempts.map(a => ({ url: a.url, status: a.status, error: a.error })));
+  return { jobs: unique, attempts };
+
+  // local helper to avoid using global variable names accidentally
+  function blotify(s){ return String(s||'').replace(/\s+/g,' ').trim(); }
 }
 
 /* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
@@ -485,12 +587,17 @@ api.get(
   '/jobs/scrape',
   asyncH(async (req, res) => {
     try {
-      const result = await scrapeAviationJobs();
+      // accept query params: q (search term), url (target full url), site (alias), save=true, max (limit)
+      const opts = {
+        q: req.query.q,
+        url: req.query.url,
+        site: req.query.site,
+        max: parseInt(req.query.max || '200', 10),
+      };
+      const result = await scrapeAviationJobs(opts);
       const scraped = Array.isArray(result) ? result : (result.jobs || []);
       const attempts = result.attempts || [];
 
-      // Default: do NOT save to DB to keep response fast.
-      // Use ?save=true to persist (limited to first N items).
       const saveRequested = String(req.query.save || '').toLowerCase() === 'true';
       const MAX_SAVE = 50;
 
@@ -500,7 +607,6 @@ api.get(
 
       if (saveRequested && scraped.length > 0) {
         const toSave = scraped.slice(0, MAX_SAVE);
-        // perform saves concurrently for speed
         const ops = toSave.map(async (j) => {
           try {
             const exists =
@@ -509,7 +615,7 @@ api.get(
             if (!exists) {
               await Job.create({
                 title: j.title,
-                description: 'External aviation job listing scraped from MyCareers.ph.',
+                description: 'External aviation job listing (scraped).',
                 companyName: j.company,
                 location: j.location,
                 link: j.link,
@@ -527,7 +633,7 @@ api.get(
 
         const results = await Promise.allSettled(ops);
         for (const r of results) {
-          if (r.status === 'fulfilled') {
+          if r.status === 'fulfilled') {
             const v = r.value;
             if (v.status === 'created') created++;
             else if (v.status === 'skipped') skipped++;
@@ -541,7 +647,7 @@ api.get(
       const resp = {
         message: 'Scraping complete',
         found: scraped.length,
-        preview: scraped.slice(0, 10),
+        preview: scraped.slice(0, 20),
         attempts: attempts,
         created,
         skipped,
@@ -550,7 +656,6 @@ api.get(
         savedLimit: saveRequested ? MAX_SAVE : 0,
       };
 
-      // Return diagnostics; do not return 500 for scraping/network issues
       if (scraped.length === 0 && attempts.length > 0) {
         return res.json({ ok: false, note: 'No jobs scraped; see attempts for details', ...resp });
       }
