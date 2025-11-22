@@ -1,5 +1,4 @@
 // AEROJOB API server with Auth, Surveys, Jobs, Companies, Users, Admin stats, Profile, and Analytics endpoints
-import fetch from "node-fetch";
 require('dotenv').config();
 if (typeof File === 'undefined') global.File = class File {};
 
@@ -389,29 +388,20 @@ api.get(
 );
 
 // PUBLIC PROXY — allows frontend to fetch blocked external pages
-app.get("/proxy", async (req, res) => {
+api.get("/proxy", async (req, res) => {
   try {
     const url = req.query.url;
-    if (!url) return res.status(400).json({ error: "No URL provided" });
+    if (!url) return res.status(400).json({ error: "url missing" });
 
-    const API_KEY = process.env.SCRAPERAPI_KEY;
-    if (!API_KEY) return res.status(500).json({ error: "Missing SCRAPERAPI_KEY" });
-
-    const scraperUrl =
-      `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(url)}`;
-
-    const response = await fetch(scraperUrl);
+    const response = await fetch(url);
     const html = await response.text();
 
-    res.send(html);
-
+    return res.send(html);
   } catch (err) {
-    console.error("Proxy ERROR:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("Proxy failed:", err);
+    return res.status(500).json({ error: err.message });
   }
 });
-
-
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
 async function scrapeAviationJobs({ q = "aviation", html, htmlBase64 }) {
