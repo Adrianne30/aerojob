@@ -220,36 +220,34 @@ export default function Jobs() {
 
         <button
   onClick={async () => {
-    try {
-      const rawHTML = await fetch(
-        `https://aerojob-backend-production.up.railway.app/proxy?url=${encodeURIComponent(
-          "https://mycareers.ph/job-search?query=aviation"
-        )}`
-      ).then(r => r.text());
+    const target =
+      "https://mycareers.ph/job-search?query=aviation";
 
-      const htmlBase64 = btoa(rawHTML);
+    // 1. Backend fetches HTML
+    const html = await fetch(
+      "https://aerojob-backend-production.up.railway.app/proxy?url=" +
+        encodeURIComponent(target)
+    ).then(r => r.text());
 
-      const res = await fetch(
-        "https://aerojob-backend-production.up.railway.app/api/jobs/scrape",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ htmlBase64 })
-        }
-      ).then(r => r.json());
+    // 2. Send HTML to backend parser
+    const parsed = await fetch(
+      "https://aerojob-backend-production.up.railway.app/api/jobs/scrape",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          html,
+          q: "aviation"
+        })
+      }
+    ).then(r => r.json());
 
-      console.log(res);
-      alert("Scraped " + (res.jobs?.length || 0) + " jobs!");
-    } catch (e) {
-      console.error(e);
-      alert("Scraping failed — check console.");
-    }
+    console.log(parsed);
+    alert("Scraped " + parsed.jobs.length + " jobs!");
   }}
 >
   🔄 Scrape Jobs
 </button>
-
-
 
 
         {hasFilters && (
