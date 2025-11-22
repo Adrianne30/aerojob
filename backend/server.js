@@ -1,4 +1,5 @@
 // AEROJOB API server with Auth, Surveys, Jobs, Companies, Users, Admin stats, Profile, and Analytics endpoints
+import fetch from "node-fetch";
 require('dotenv').config();
 if (typeof File === 'undefined') global.File = class File {};
 
@@ -23,7 +24,8 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const https = require('https');
 const dns = require('dns');
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 /* ----------------------------- Security & Logging ----------------------------- */
 app.use(helmet({ crossOriginResourcePolicy: false }));
@@ -393,6 +395,8 @@ app.get("/proxy", async (req, res) => {
     if (!url) return res.status(400).json({ error: "No URL provided" });
 
     const API_KEY = process.env.SCRAPERAPI_KEY;
+    if (!API_KEY) return res.status(500).json({ error: "Missing SCRAPERAPI_KEY" });
+
     const scraperUrl =
       `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(url)}`;
 
@@ -406,6 +410,7 @@ app.get("/proxy", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
