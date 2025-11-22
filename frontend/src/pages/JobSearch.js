@@ -13,12 +13,13 @@ import toast from "react-hot-toast";
 async function scrapeJobs(query = "aviation") {
   const targetURL = `https://mycareers.ph/job-search?query=${encodeURIComponent(query)}`;
 
-  // 1. frontend fetches HTML
-  const html = await fetch(targetURL).then(r => r.text());
+  // 1. Fetch HTML from frontend (allowed by browser)
+  const html = await fetch(targetURL).then(res => res.text());
 
+  // 2. Convert to Base64 for backend
   const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
 
-  // 2. send HTML to backend
+  // 3. Send HTML to backend for parsing
   const result = await fetch("https://aerojob-backend-production.up.railway.app/api/jobs/scrape", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -26,8 +27,9 @@ async function scrapeJobs(query = "aviation") {
       q: query,
       htmlBase64
     })
-  }).then(r => r.json());
+  }).then(res => res.json());
 
+  console.log("SCRAPER RESULT:", result);
   return result;
 }
 
@@ -218,16 +220,39 @@ export default function Jobs() {
 
       <button
       onClick={async () => {
-        const res = await fetch(
-          "https://aerojob-backend-production.up.railway.app/api/jobs/scrape"
-        ).then(r => r.json());
+        try {
+          // 1. Fetch HTML from mycareers.ph directly (frontend is allowed)
+          const targetURL = "https://mycareers.ph/job-search?query=aviation";
+          const html = await fetch(targetURL).then(res => res.text());
 
-        console.log(res);
-        alert("Scraped " + (res.jobs?.length || 0) + " jobs!");
+          // 2. Convert HTML → Base64 for backend
+          const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
+
+          // 3. Send Base64 HTML to backend (POST, not GET)
+          const res = await fetch(
+            "https://aerojob-backend-production.up.railway.app/api/jobs/scrape",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                q: "aviation",
+                htmlBase64
+              })
+            }
+          ).then(r => r.json());
+
+          console.log(res);
+
+          alert("Scraped " + (res.jobs?.length || 0) + " jobs!");
+        } catch (err) {
+          console.error("Scrape failed:", err);
+          alert("Scraping failed — check console.");
+        }
       }}
     >
       🔄 Scrape Jobs
     </button>
+
 
         {hasFilters && (
           <div className="mt-3">
