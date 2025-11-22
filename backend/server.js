@@ -532,29 +532,15 @@ async function scrapeAviationJobs(opts = {}) {
     return null;
   }
 
-  // Only fetch if html wasn't provided above
-  if (typeof html === 'undefined') {
-    let fetched = await tryFetchWithRetries(scraperURL, 2);
-    // If fetch failed, return full error info
-    if (!fetched) {
-      console.error("[SCRAPER] All fetch attempts failed:", attempts);
-      return {
-        jobs: [],
-        attempts,
-        note:
-          "If Railway blocks outbound TLS you can provide page HTML via the html query/body (base64) or set SCRAPER_PROXY_URL."
-      };
+// Backend cannot fetch external sites on Railway.
+// If no HTML was provided, return a clear message.
+if (typeof html === 'undefined') {
+  return {
+    jobs: [],
+    attempts: [],
+    note: "Backend cannot fetch HTML. Frontend must supply HTML via POST { htmlBase64 }"
+  };
 }
-
-    if (!fetched) {
-      console.error("[SCRAPER] All fetch attempts failed:", attempts);
-      return {
-        jobs: [], attempts,
-        note: 'If Railway blocks outbound TLS you can provide page HTML via the html query/body (base64) or set SCRAPER_PROXY_URL to route through a proxy.'
-      };
-    }
-    html = fetched;
-  }
 
   const $ = cheerio.load(html);
   const jobs = [];
