@@ -395,29 +395,31 @@ async function scrapeAviationJobs(opts = {}) {
      opts.site === 'indeed' ? `https://ph.indeed.com/jobs?q=${encodeURIComponent(q)}` :
      `https://mycareers.ph/job-search?query=${encodeURIComponent(q)}`);
 
-const primaryIsScraper = (!!API_KEY && !process.env.SCRAPER_PROXY_URL);
+    // STEP 1 — default: direct target URL
+    let scraperURL = targetURL;
 
-let scraperURL = targetURL;
+    // STEP 2 — If no proxy is configured, but ScraperAPI key exists → use ScraperAPI
+    if (!process.env.SCRAPER_PROXY_URL && API_KEY) {
+      scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`;
+      console.log("[SCRAPER] Using ScraperAPI directly:", scraperURL);
+    }
 
-if (primaryIsScraper) {
-  scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`;
-}
+    // STEP 3 — If proxy is configured → ALWAYS override
+    if (process.env.SCRAPER_PROXY_URL) {
+      const proxy = String(process.env.SCRAPER_PROXY_URL);
 
-// If SCRAPER_PROXY_URL exists, override everything
-if (process.env.SCRAPER_PROXY_URL) {
-  const proxy = process.env.SCRAPER_PROXY_URL;
-  if (proxy.includes("{url}")) {
-    scraperURL = proxy.replace("{url}", encodeURIComponent(targetURL));
-  } else {
-    const sep = proxy.includes("?") ? "&" : "?";
-    scraperURL = `${proxy}${sep}url=${encodeURIComponent(targetURL)}`;
-  }
-  console.log("[SCRAPER] Using proxy:", scraperURL);
-}
+      if (proxy.includes("{url}")) {
+        scraperURL = proxy.replace("{url}", encodeURIComponent(targetURL));
+      } else {
+        const sep = proxy.includes("?") ? "&" : "?";
+        scraperURL = `${proxy}${sep}url=${encodeURIComponent(targetURL)}`;
+      }
+
+      console.log("[SCRAPER] Using PROXY ONLY:", scraperURL);
+    }
 
 
   console.log("[SCRAPER] Fetching jobs from", targetURL, primaryIsScraper ? "(via ScraperAPI)" : "(direct fetch)");
-
   const attempts = [];
 
   // If HTML provided in opts (base64 or raw), use it directly and skip fetching.
