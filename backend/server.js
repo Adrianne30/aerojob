@@ -409,66 +409,66 @@ app.get('/proxy', async (req, res) => {
 });
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
+async function scrapeAviationJobs(query = "aviation") {
+  const API_KEY = process.env.SCRAPERAPI_KEY;
 
-async function scrapeAviationJobs(opts = {}) {
-  const q = opts.q || "aviation";
-
-  // Backend cannot fetch — MUST receive HTML from frontend
-  if (!opts.html && !opts.htmlBase64) {
-    return {
-      ok: false,
-      jobs: [],
-      note: "Backend cannot fetch HTML on Railway. Frontend must send HTML via POST { htmlBase64 }."
-    };
+  if (!API_KEY) {
+    return { ok: false, error: "Missing SCRAPERAPI_KEY" };
   }
 
-  // Decode incoming HTML
-  let html = opts.html || "";
-  if (opts.htmlBase64) {
-    try {
-      html = Buffer.from(opts.htmlBase64, "base64").toString("utf8");
-    } catch (e) {
-      return { ok: false, error: "Invalid Base64 HTML" };
-    }
+  const targetURL = `https://mycareers.ph/job-search?query=${encodeURIComponent(query)}`;
+  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`;
+
+  console.log("[SCRAPER] Calling:", scraperURL);
+
+  try {
+    const response = await axios.get(scraperURL, {
+      timeout: 60000,
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Accept: "text/html",
+      },
+    });
+
+    const html = response.data;
+    const $ = cheerio.load(html);
+
+    const jobs = [];
+
+    $("a").each((i, el) => {
+      const title = $(el).text().trim();
+      const link = $(el).attr("href");
+
+      if (!link || !title) return;
+
+      if (/aviation|aircraft|pilot|airport/i.test(title)) {
+        jobs.push({
+          title,
+          company: "Unknown",
+          location: "",
+          link: link.startsWith("http")
+            ? link
+            : `https://mycareers.ph${link}`,
+        });
+      }
+    });
+
+    return { ok: true, jobs };
+  } catch (err) {
+    console.error("[SCRAPER ERROR]", err.message);
+    return { ok: false, error: err.message };
   }
-
-  const $ = cheerio.load(html);
-  const jobs = [];
-
-  $("a").each((i, el) => {
-    const title = $(el).text().trim();
-    const href = $(el).attr("href");
-
-    if (!href || !title) return;
-
-    if (/aviation|aircraft|pilot|airport|aero/i.test(title)) {
-      jobs.push({
-        title,
-        company: "Unknown",
-        location: "",
-        link: href.startsWith("http")
-          ? href
-          : `https://mycareers.ph${href}`,
-      });
-    }
-  });
-
-  return { ok: true, jobs };
 }
 
 /* ----------------------------- SCRAPER ROUTE ---------------------------- */
 
-api.post('/jobs/scrape', asyncH(async (req, res) => {
-  const opts = {
-    q: req.body.q,
-    html: req.body.html,
-    htmlBase64: req.body.htmlBase64
-  };
+api.post("/jobs/scrape", asyncH(async (req, res) => {
+  const q = req.body.q || "aviation";
 
-  const result = await scrapeAviationJobs(opts);
+  const result = await scrapeAviationJobs(q);
 
   if (!result.ok) {
-    return res.json({ ok: false, ...result });
+    return res.json({ ok: false, error: result.error });
   }
 
   return res.json({
@@ -477,6 +477,7 @@ api.post('/jobs/scrape', asyncH(async (req, res) => {
     jobs: result.jobs
   });
 }));
+
 
 /* ----------------------------- STANDARD JOB ROUTES ---------------------------- */
 api.get(
