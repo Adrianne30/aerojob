@@ -56,9 +56,9 @@ app.options('*', cors(corsOptions));
 /* ----------------------------- CSP HEADER FIX ------------------------------ */
 app.use((req, res, next) => {
   res.setHeader(
-    'Content-Security-Policy',
-    "default-src 'self'; connect-src 'self' https://aerojob.space https://api.aerojob.space https://aerojob-backend-production.up.railway.app; img-src 'self' data: blob: https://aerojob.space https://api.aerojob.space; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';"
-  );
+  'Content-Security-Policy',
+  "default-src 'self'; connect-src 'self' https://aerojob.space https://api.aerojob.space https://aerojob-backend-production.up.railway.app https://mycareers.ph; img-src 'self' data: blob: https://aerojob.space https://api.aerojob.space; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';"
+);
   next();
 });
 

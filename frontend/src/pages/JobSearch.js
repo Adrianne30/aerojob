@@ -200,12 +200,7 @@ export default function Jobs() {
             </div>
           </div>
 
-        <button
-          onClick={() => scrapeJobsFromWeb("aviation")}
-          className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-        >
-          🔄 Scrape New Jobs from Web
-        </button>
+
 
           {/* Type */}
           <div>
@@ -235,6 +230,13 @@ export default function Jobs() {
             />
           </div>
         </div>
+
+         <button
+          onClick={() => scrapeJobsFromWeb("aviation")}
+          className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+        >
+          🔄 Scrape 
+        </button>
 
         {hasFilters && (
           <div className="mt-3">
