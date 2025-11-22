@@ -221,25 +221,33 @@ export default function Jobs() {
  <button
   onClick={async () => {
     try {
+      const rawHtml = await fetch(
+        "https://aerojob-backend-production.up.railway.app/proxy?url=" +
+        encodeURIComponent("https://mycareers.ph/job-search?query=aviation")
+      ).then(r => r.text());
+
+      const htmlBase64 = btoa(unescape(encodeURIComponent(rawHtml)));
+
       const res = await fetch(
         "https://aerojob-backend-production.up.railway.app/api/jobs/scrape",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ q: "aviation" })
+          body: JSON.stringify({ htmlBase64 })
         }
       ).then(r => r.json());
 
       console.log(res);
-      alert("Found " + (res.jobs?.length || 0) + " jobs!");
-    } catch (err) {
-      console.error(err);
-      alert("Scraping failed.");
+      alert("Scraped " + (res.jobs?.length || 0) + " jobs!");
+    } catch (e) {
+      console.error(e);
+      alert("Scraping failed — see console");
     }
   }}
 >
   🔄 Scrape Jobs
 </button>
+
 
 
         {hasFilters && (

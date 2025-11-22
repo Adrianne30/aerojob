@@ -409,74 +409,66 @@ app.get('/proxy', async (req, res) => {
 });
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
-async function scrapeAviationJobs(query = "aviation") {
-  const API_KEY = process.env.SCRAPERAPI_KEY;
+async function scrapeAviationJobs({ q = "aviation", html, htmlBase64 }) {
+  // 1) IF HTML is provided → parse it (Railway-safe)
+  let finalHtml = null;
 
-  if (!API_KEY) {
-    return { ok: false, error: "Missing SCRAPERAPI_KEY" };
+  if (htmlBase64) {
+    try {
+      finalHtml = Buffer.from(htmlBase64, "base64").toString("utf8");
+    } catch (e) {
+      return { ok: false, error: "Invalid base64 HTML" };
+    }
   }
 
-  const targetURL = `https://mycareers.ph/job-search?query=${encodeURIComponent(query)}`;
-  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`;
-
-  console.log("[SCRAPER] Calling:", scraperURL);
-
-  try {
-    const response = await axios.get(scraperURL, {
-      timeout: 60000,
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        Accept: "text/html",
-      },
-    });
-
-    const html = response.data;
-    const $ = cheerio.load(html);
-
-    const jobs = [];
-
-    $("a").each((i, el) => {
-      const title = $(el).text().trim();
-      const link = $(el).attr("href");
-
-      if (!link || !title) return;
-
-      if (/aviation|aircraft|pilot|airport/i.test(title)) {
-        jobs.push({
-          title,
-          company: "Unknown",
-          location: "",
-          link: link.startsWith("http")
-            ? link
-            : `https://mycareers.ph${link}`,
-        });
-      }
-    });
-
-    return { ok: true, jobs };
-  } catch (err) {
-    console.error("[SCRAPER ERROR]", err.message);
-    return { ok: false, error: err.message };
+  if (html && !finalHtml) {
+    finalHtml = String(html);
   }
+
+  // If no HTML → cannot scrape on Railway
+  if (!finalHtml) {
+    return {
+      ok: false,
+      error: "Backend cannot fetch external HTML. Frontend must send HTML via htmlBase64."
+    };
+  }
+
+  // 2) PARSE HTML
+  const $ = cheerio.load(finalHtml);
+  const jobs = [];
+
+  $("a").each((i, el) => {
+    const title = $(el).text().trim();
+    const link = $(el).attr("href");
+
+    if (!title || !link) return;
+
+    if (/aviation|aircraft|pilot|airport|engineer/i.test(title)) {
+      jobs.push({
+        title,
+        company: "Unknown",
+        location: "",
+        link: link.startsWith("http") ? link : `https://mycareers.ph${link}`,
+      });
+    }
+  });
+
+  return { ok: true, jobs };
 }
+
 
 /* ----------------------------- SCRAPER ROUTE ---------------------------- */
 
 api.post("/jobs/scrape", asyncH(async (req, res) => {
-  const q = req.body.q || "aviation";
-
-  const result = await scrapeAviationJobs(q);
-
-  if (!result.ok) {
-    return res.json({ ok: false, error: result.error });
-  }
-
-  return res.json({
-    ok: true,
-    found: result.jobs.length,
-    jobs: result.jobs
+  const result = await scrapeAviationJobs({
+    q: req.body.q,
+    html: req.body.html,
+    htmlBase64: req.body.htmlBase64
   });
+
+  return res.json(result);
 }));
+
 
 
 /* ----------------------------- STANDARD JOB ROUTES ---------------------------- */
