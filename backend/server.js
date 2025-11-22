@@ -387,26 +387,31 @@ api.get(
 );
 
 // PUBLIC PROXY — allows frontend to fetch blocked external pages
-app.get('/proxy', async (req, res) => {
+app.get("/proxy", async (req, res) => {
   try {
     const url = req.query.url;
     if (!url) return res.status(400).json({ error: "No URL provided" });
 
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "text/html",
-      }
+    const apiKey = process.env.SCRAPERAPI_KEY;
+    if (!apiKey) return res.status(500).json({ error: "Missing SCRAPERAPI_KEY" });
+
+    const scraperUrl =
+      `https://api.scraperapi.com?api_key=${apiKey}&render=true&url=${encodeURIComponent(url)}`;
+
+    const response = await fetch(scraperUrl, {
+      headers: { "User-Agent": "Mozilla/5.0" }
     });
 
     const html = await response.text();
     res.send(html);
 
   } catch (err) {
-    console.error("Proxy error:", err.message);
+    console.error("Proxy ERROR:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
+
+
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
 async function scrapeAviationJobs({ q = "aviation", html, htmlBase64 }) {
