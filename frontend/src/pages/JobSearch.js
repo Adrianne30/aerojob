@@ -15,15 +15,11 @@ async function scrapeJobsFromWeb(query = "aviation") {
   try {
     const targetURL = `https://mycareers.ph/job-search?query=${encodeURIComponent(query)}`;
 
-    // 1. Fetch HTML directly (frontend can fetch external sites)
     const html = await fetch(targetURL).then(res => res.text());
-
-    // 2. Convert to Base64
     const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
 
-    // 3. Send HTML to backend for parsing
     const result = await fetch(
-      `${import.meta.env.VITE_API_BASE_URL}/api/jobs/scrape`,
+      "https://aerojob-backend-production.up.railway.app/api/jobs/scrape",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -186,6 +182,7 @@ export default function Jobs() {
     >
       🔄 Scrape New Jobs from Web
     </button>
+
 
       {/* Filter Bar */}
       <div className="bg-white/70 backdrop-blur border rounded-2xl shadow-sm p-3 sm:p-4 mb-6">
