@@ -535,12 +535,16 @@ async function scrapeAviationJobs(opts = {}) {
   // Only fetch if html wasn't provided above
   if (typeof html === 'undefined') {
     let fetched = await tryFetchWithRetries(scraperURL, 2);
-    if (!fetched && primaryIsScraper) {
-      console.warn("[SCRAPER] ScraperAPI attempt failed, falling back to direct fetch");
-      fetched = await tryFetchWithRetries(targetURL, 3);
-    } else if (!fetched) {
-      fetched = await tryFetchWithRetries(targetURL, 3);
-    }
+    // If fetch failed, return full error info
+    if (!fetched) {
+      console.error("[SCRAPER] All fetch attempts failed:", attempts);
+      return {
+        jobs: [],
+        attempts,
+        note:
+          "If Railway blocks outbound TLS you can provide page HTML via the html query/body (base64) or set SCRAPER_PROXY_URL."
+      };
+}
 
     if (!fetched) {
       console.error("[SCRAPER] All fetch attempts failed:", attempts);
