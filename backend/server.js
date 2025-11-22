@@ -392,17 +392,13 @@ app.get("/proxy", async (req, res) => {
     const url = req.query.url;
     if (!url) return res.status(400).json({ error: "No URL provided" });
 
-    const apiKey = process.env.SCRAPERAPI_KEY;
-    if (!apiKey) return res.status(500).json({ error: "Missing SCRAPERAPI_KEY" });
-
+    const API_KEY = process.env.SCRAPERAPI_KEY;
     const scraperUrl =
-      `https://api.scraperapi.com?api_key=${apiKey}&render=true&url=${encodeURIComponent(url)}`;
+      `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(url)}`;
 
-    const response = await fetch(scraperUrl, {
-      headers: { "User-Agent": "Mozilla/5.0" }
-    });
-
+    const response = await fetch(scraperUrl);
     const html = await response.text();
+
     res.send(html);
 
   } catch (err) {
@@ -410,7 +406,6 @@ app.get("/proxy", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
