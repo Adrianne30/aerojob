@@ -10,14 +10,16 @@ import {
 import LoadingSpinner from "../components/LoadingSpinner";
 import toast from "react-hot-toast";
 
-// 🔥 Scraper Helper (Frontend → fetch HTML → backend parses it)
 async function scrapeJobsFromWeb(query = "aviation") {
   try {
+    // 1. Fetch HTML directly (frontend can do this, backend cannot)
     const targetURL = `https://mycareers.ph/job-search?query=${encodeURIComponent(query)}`;
-
     const html = await fetch(targetURL).then(res => res.text());
+
+    // 2. Convert HTML to Base64
     const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
 
+    // 3. Send Base64 HTML to backend for parsing
     const result = await fetch(
       "https://aerojob-backend-production.up.railway.app/api/jobs/scrape",
       {
@@ -28,7 +30,13 @@ async function scrapeJobsFromWeb(query = "aviation") {
     ).then(res => res.json());
 
     console.log("SCRAPED RESULTS:", result);
-    toast.success(`Scraped ${result.found} jobs from the web!`);
+
+    if (!result.ok) {
+      toast.error("Scraper returned no jobs");
+    } else {
+      toast.success(`Scraped ${result.found} jobs!`);
+    }
+
     return result;
 
   } catch (err) {
@@ -106,7 +114,6 @@ async function logSearchTerm(term) {
 export default function Jobs() {
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState([]);
-
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
@@ -176,13 +183,6 @@ export default function Jobs() {
         </p>
       </div>
 
-    <button
-      onClick={() => scrapeJobsFromWeb("aviation")}
-      className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-    >
-      🔄 Scrape New Jobs from Web
-    </button>
-
 
       {/* Filter Bar */}
       <div className="bg-white/70 backdrop-blur border rounded-2xl shadow-sm p-3 sm:p-4 mb-6">
@@ -199,6 +199,13 @@ export default function Jobs() {
               />
             </div>
           </div>
+
+        <button
+          onClick={() => scrapeJobsFromWeb("aviation")}
+          className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+        >
+          🔄 Scrape New Jobs from Web
+        </button>
 
           {/* Type */}
           <div>
