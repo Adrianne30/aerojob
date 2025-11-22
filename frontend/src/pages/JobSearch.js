@@ -10,6 +10,38 @@ import {
 import LoadingSpinner from "../components/LoadingSpinner";
 import toast from "react-hot-toast";
 
+// 🔥 Scraper Helper (Frontend → fetch HTML → backend parses it)
+async function scrapeJobsFromWeb(query = "aviation") {
+  try {
+    const targetURL = `https://mycareers.ph/job-search?query=${encodeURIComponent(query)}`;
+
+    // 1. Fetch HTML directly (frontend can fetch external sites)
+    const html = await fetch(targetURL).then(res => res.text());
+
+    // 2. Convert to Base64
+    const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
+
+    // 3. Send HTML to backend for parsing
+    const result = await fetch(
+      `${import.meta.env.VITE_API_BASE_URL}/api/jobs/scrape`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ htmlBase64, q: query })
+      }
+    ).then(res => res.json());
+
+    console.log("SCRAPED RESULTS:", result);
+    toast.success(`Scraped ${result.found} jobs from the web!`);
+    return result;
+
+  } catch (err) {
+    console.error("Scraping failed:", err);
+    toast.error("Failed to scrape jobs");
+  }
+}
+
+
 /* --- time ago helper --- */
 const timeAgo = (isoOrDate) => {
   if (!isoOrDate) return "";
@@ -147,6 +179,13 @@ export default function Jobs() {
           Browse active and approved opportunities for PhilSCA Students & Alumni.
         </p>
       </div>
+
+    <button
+      onClick={() => scrapeJobsFromWeb("aviation")}
+      className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+    >
+      🔄 Scrape New Jobs from Web
+    </button>
 
       {/* Filter Bar */}
       <div className="bg-white/70 backdrop-blur border rounded-2xl shadow-sm p-3 sm:p-4 mb-6">
