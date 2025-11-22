@@ -23,6 +23,7 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const https = require('https');
 const dns = require('dns');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 /* ----------------------------- Security & Logging ----------------------------- */
 app.use(helmet({ crossOriginResourcePolicy: false }));
@@ -385,6 +386,28 @@ api.get(
   })
 );
 
+// PUBLIC PROXY — allows frontend to fetch blocked external pages
+app.get('/proxy', async (req, res) => {
+  try {
+    const url = req.query.url;
+    if (!url) return res.status(400).json({ error: "No URL provided" });
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "text/html",
+      }
+    });
+
+    const html = await response.text();
+    res.send(html);
+
+  } catch (err) {
+    console.error("Proxy error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
 
 async function scrapeAviationJobs(opts = {}) {
@@ -454,9 +477,6 @@ api.post('/jobs/scrape', asyncH(async (req, res) => {
     jobs: result.jobs
   });
 }));
-
-
-
 
 /* ----------------------------- STANDARD JOB ROUTES ---------------------------- */
 api.get(

@@ -219,39 +219,38 @@ export default function Jobs() {
         </div>
 
       <button
-      onClick={async () => {
-        try {
-          // 1. Fetch HTML from mycareers.ph directly (frontend is allowed)
-          const targetURL = "https://mycareers.ph/job-search?query=aviation";
-          const html = await fetch(targetURL).then(res => res.text());
+        onClick={async () => {
+          try {
+            // 1. Fetch page HTML via backend proxy (NOT directly)
+            const html = await fetch(
+              "https://aerojob-backend-production.up.railway.app/proxy?url=" +
+              encodeURIComponent("https://mycareers.ph/job-search?query=aviation")
+            ).then(r => r.text());
 
-          // 2. Convert HTML → Base64 for backend
-          const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
+            // 2. Base64 encode
+            const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
 
-          // 3. Send Base64 HTML to backend (POST, not GET)
-          const res = await fetch(
-            "https://aerojob-backend-production.up.railway.app/api/jobs/scrape",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                q: "aviation",
-                htmlBase64
-              })
-            }
-          ).then(r => r.json());
+            // 3. Send to scraper
+            const res = await fetch(
+              "https://aerojob-backend-production.up.railway.app/api/jobs/scrape",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ htmlBase64, q: "aviation" })
+              }
+            ).then(r => r.json());
 
-          console.log(res);
+            console.log(res);
+            alert("Scraped " + (res.jobs?.length || 0) + " jobs!");
+          } catch (err) {
+            console.error("Scraping failed:", err);
+            alert("Scraping failed — check console.");
+          }
+        }}
+      >
+        🔄 Scrape Jobs
+      </button>
 
-          alert("Scraped " + (res.jobs?.length || 0) + " jobs!");
-        } catch (err) {
-          console.error("Scrape failed:", err);
-          alert("Scraping failed — check console.");
-        }
-      }}
-    >
-      🔄 Scrape Jobs
-    </button>
 
 
         {hasFilters && (
