@@ -419,7 +419,7 @@ async function scrapeAviationJobs(opts = {}) {
     }
 
 
-  console.log("[SCRAPER] Fetching jobs from", targetURL, primaryIsScraper ? "(via ScraperAPI)" : "(direct fetch)");
+  console.log("[SCRAPER] Fetching jobs via:", scraperURL);
   const attempts = [];
 
   // If HTML provided in opts (base64 or raw), use it directly and skip fetching.
