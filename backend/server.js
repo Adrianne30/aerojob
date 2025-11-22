@@ -388,36 +388,57 @@ api.get(
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
 async function scrapeAviationJobs(opts = {}) {
   const API_KEY = process.env.SCRAPERAPI_KEY;
-  const q = String(opts.q || 'aviation').trim();
+  const q = opts.q || "aviation";
+
   const targetURL =
     opts.url ||
-    (opts.site === 'mycareers' ? `https://mycareers.ph/job-search?query=${encodeURIComponent(q)}` :
-     opts.site === 'indeed' ? `https://ph.indeed.com/jobs?q=${encodeURIComponent(q)}` :
-     `https://mycareers.ph/job-search?query=${encodeURIComponent(q)}`);
+    `https://mycareers.ph/job-search?query=${encodeURIComponent(q)}`;
 
-    // STEP 1 — default: direct target URL
-    let scraperURL = targetURL;
+  // 🔥 Use ONLY ScraperAPI proxy safely
+  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&url=${encodeURIComponent(targetURL)}`;
 
-    // STEP 2 — If no proxy is configured, but ScraperAPI key exists → use ScraperAPI
-    if (!process.env.SCRAPER_PROXY_URL && API_KEY) {
-      scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`;
-      console.log("[SCRAPER] Using ScraperAPI directly:", scraperURL);
-    }
+  console.log("[SCRAPER] Calling:", scraperURL);
 
-    // STEP 3 — If proxy is configured → ALWAYS override
-    if (process.env.SCRAPER_PROXY_URL) {
-      const proxy = String(process.env.SCRAPER_PROXY_URL);
+  try {
+    const response = await axios.get(scraperURL, {
+      timeout: 60000,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Accept: "text/html",
+      },
+    });
 
-      if (proxy.includes("{url}")) {
-        scraperURL = proxy.replace("{url}", encodeURIComponent(targetURL));
-      } else {
-        const sep = proxy.includes("?") ? "&" : "?";
-        scraperURL = `${proxy}${sep}url=${encodeURIComponent(targetURL)}`;
+    const html = response.data;
+    const $ = cheerio.load(html);
+
+    const jobs = [];
+
+    $("a").each((i, el) => {
+      const title = $(el).text().trim();
+      const link = $(el).attr("href");
+
+      if (!link) return;
+      if (!title) return;
+
+      if (/aviation|aircraft|pilot|airport/i.test(title)) {
+        jobs.push({
+          title,
+          company: "Unknown",
+          location: "",
+          link: link.startsWith("http")
+            ? link
+            : `https://mycareers.ph${link}`,
+        });
       }
+    });
 
-      console.log("[SCRAPER] Using PROXY ONLY:", scraperURL);
-    }
-
+    return { ok: true, jobs };
+  } catch (e) {
+    console.error("[SCRAPER ERROR]", e.message);
+    return { ok: false, error: e.message };
+  }
+}
 
   console.log("[SCRAPER] Fetching jobs via:", scraperURL);
   const attempts = [];

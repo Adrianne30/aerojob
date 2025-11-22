@@ -232,11 +232,17 @@ export default function Jobs() {
         </div>
 
          <button
-          onClick={() => scrapeJobsFromWeb("aviation")}
-          className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-        >
-          🔄 Scrape 
-        </button>
+  onClick={async () => {
+    const res = await fetch(
+      "https://aerojob-backend-production.up.railway.app/api/jobs/scrape"
+    ).then(r => r.json());
+
+    console.log(res);
+    alert("Scraped " + (res.jobs?.length || 0) + " jobs!");
+  }}
+>
+  🔄 Scrape Jobs
+</button>
 
         {hasFilters && (
           <div className="mt-3">
