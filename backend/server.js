@@ -705,7 +705,6 @@ if (typeof html === 'undefined') {
 
   // local helper to avoid using global variable names accidentally
   function blotify(s){ return String(s||'').replace(/\s+/g,' ').trim(); }
-}
 
 /* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
 api.get(
