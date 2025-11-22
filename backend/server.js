@@ -386,6 +386,7 @@ api.get(
 );
 
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
+
 async function scrapeAviationJobs(opts = {}) {
   const API_KEY = process.env.SCRAPERAPI_KEY;
   const q = opts.q || "aviation";
@@ -394,317 +395,48 @@ async function scrapeAviationJobs(opts = {}) {
     opts.url ||
     `https://mycareers.ph/job-search?query=${encodeURIComponent(q)}`;
 
-  // 🔥 Use ONLY ScraperAPI proxy safely
-  const scraperURL = `https://api.scraperapi.com?api_key=${API_KEY}&url=${encodeURIComponent(targetURL)}`;
-
-  console.log("[SCRAPER] Calling:", scraperURL);
-
-  try {
-    const response = await axios.get(scraperURL, {
-      timeout: 60000,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        Accept: "text/html",
-      },
-    });
-
-    const html = response.data;
-    const $ = cheerio.load(html);
-
-    const jobs = [];
-
-    $("a").each((i, el) => {
-      const title = $(el).text().trim();
-      const link = $(el).attr("href");
-
-      if (!link) return;
-      if (!title) return;
-
-      if (/aviation|aircraft|pilot|airport/i.test(title)) {
-        jobs.push({
-          title,
-          company: "Unknown",
-          location: "",
-          link: link.startsWith("http")
-            ? link
-            : `https://mycareers.ph${link}`,
-        });
-      }
-    });
-
-    return { ok: true, jobs };
-  } catch (e) {
-    console.error("[SCRAPER ERROR]", e.message);
-    return { ok: false, error: e.message };
+  // ❗ Backend CANNOT fetch directly on Railway — requires frontend HTML
+  if (!opts.html && !opts.htmlBase64) {
+    return {
+      ok: false,
+      jobs: [],
+      note: "Backend cannot fetch HTML on Railway. Frontend must send HTML via POST { htmlBase64 }."
+    };
   }
-}
 
-  console.log("[SCRAPER] Fetching jobs via:", scraperURL);
-  const attempts = [];
-
-  // If HTML provided in opts (base64 or raw), use it directly and skip fetching.
-  if (opts.html) {
-    let providedHtml = String(opts.html || '');
+  // ▼ Decode HTML coming from frontend
+  let html = opts.html || "";
+  if (opts.htmlBase64) {
     try {
-      // try base64 decode first (client can send base64 to avoid URL-length issues)
-      const decoded = Buffer.from(providedHtml, 'base64').toString('utf8');
-      // if decoding produced non-empty and looks like HTML, use it
-      if (decoded && /<\s*html|<\s*div|<\s*body|<\/\w+>/.test(decoded)) {
-        providedHtml = decoded;
-      }
+      html = Buffer.from(opts.htmlBase64, "base64").toString("utf8");
     } catch (_) {
-      // ignore decode error, use raw
-    }
-    attempts.push({ url: '(provided-html)', note: 'skipped-fetch, parsing provided HTML', length: providedHtml.length, at: new Date().toISOString() });
-    // set html variable so parser below continues unchanged
-    var html = providedHtml;
-  }
-
-  // helper: sleep/backoff
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-  // --- Network agent / proxy setup ---
-  // Support HTTPS_PROXY / HTTP_PROXY env (preferred) and optional FORCE_IPV4 to force IPv4 lookup.
-  let proxyAgent = null;
-  const proxyFromEnv = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || null;
-  if (proxyFromEnv) {
-    try {
-      const { HttpsProxyAgent } = require('https-proxy-agent');
-      proxyAgent = new HttpsProxyAgent(proxyFromEnv);
-      console.log('[SCRAPER] Using proxy from env:', proxyFromEnv);
-    } catch (e) {
-      console.warn('[SCRAPER] https-proxy-agent not available, proxy disabled:', e.message);
-      proxyAgent = null;
+      return { ok: false, error: "Invalid Base64 HTML" };
     }
   }
-
-  // Optional IPv4-only agent to avoid IPv6/DNS/TLS issues on some hosts (enable with FORCE_IPV4=true)
-  let ipv4Agent = null;
-  if (String(process.env.FORCE_IPV4 || '').toLowerCase() === 'true') {
-    try {
-      ipv4Agent = new https.Agent({
-        keepAlive: true,
-        lookup: (hostname, options, callback) => dns.lookup(hostname, { family: 4 }, callback),
-      });
-      console.log('[SCRAPER] IPv4 agent enabled (FORCE_IPV4=true)');
-    } catch (e) {
-      console.warn('[SCRAPER] Failed to create IPv4 agent:', e.message);
-      ipv4Agent = null;
-    }
-  }
-
-  const SCRAPER_TIMEOUT = parseInt(process.env.SCRAPER_TIMEOUT || '45000', 10);
-  const MAX_CONTENT = 8 * 1024 * 1024; // 8MB
-
-  // exponential backoff with jitter
-  function backoff(attempt) {
-    const base = 500 * Math.pow(2, attempt - 1);
-    const jitter = Math.floor(Math.random() * 300);
-    return base + jitter;
-  }
-
-  async function tryFetchWithRetries(url, maxAttempts = 3) {
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const now = new Date().toISOString();
-      try {
-        const axiosOpts = {
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
-            "Accept-Language": "en-US,en;q=0.9",
-            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          },
-          timeout: SCRAPER_TIMEOUT,
-          responseType: 'text',
-          maxContentLength: MAX_CONTENT,
-          maxRedirects: 5,
-        };
-
-        // choose appropriate agent: IPv4 agent preferred, else proxy agent, else default
-        if (ipv4Agent) {
-          axiosOpts.httpsAgent = ipv4Agent;
-          axiosOpts.proxy = false;
-          console.log(`[SCRAPER] Attempt ${attempt} -> ${url} (using IPv4 agent)`);
-        } else if (proxyAgent) {
-          axiosOpts.httpsAgent = proxyAgent;
-          axiosOpts.proxy = false;
-          console.log(`[SCRAPER] Attempt ${attempt} -> ${url} (using proxy)`);
-        } else {
-          console.log(`[SCRAPER] Attempt ${attempt} -> ${url} (default agent)`);
-        }
-
-        const resp = await axios.get(url, axiosOpts);
-        attempts.push({ url, status: resp.status, length: String(resp.data || '').length, attempt, at: now });
-        return resp.data;
-      } catch (err) {
-        const info = {
-          url,
-          attempt,
-          at: now,
-          error: err.message || String(err),
-          status: err.response?.status,
-          snippet: err.response?.data ? String(err.response?.data).slice(0, 200) : undefined,
-        };
-        attempts.push(info);
-        if (attempt < maxAttempts) await sleep(backoff(attempt));
-      }
-    }
-    return null;
-  }
-
-// Backend cannot fetch external sites on Railway.
-// If no HTML was provided, return a clear message.
-if (typeof html === 'undefined') {
-  return {
-    jobs: [],
-    attempts: [],
-    note: "Backend cannot fetch HTML. Frontend must supply HTML via POST { htmlBase64 }"
-  };
-}
 
   const $ = cheerio.load(html);
   const jobs = [];
-  const seen = new Set();
-  const aviationKeywords = ['aviation','aerospace','pilot','airline','flight','aeronautic','aircraft','avionics','air safety','air traffic'];
 
-  function looksAviation(text = '') {
-    const s = (text || '').toLowerCase();
-    return aviationKeywords.some(k => s.includes(k));
-  }
+  // Simple parsing: extract aviation-related links
+  $("a").each((i, el) => {
+    const title = $(el).text().trim();
+    const href = $(el).attr("href");
 
-  // 1) Try to parse JSON-LD JobPosting(s)
-  $('script[type="application/ld+json"]').each((i, el) => {
-    try {
-      const data = JSON.parse($(el).contents().text() || '{}');
-      const arr = Array.isArray(data) ? data : [data];
-      for (const item of arr) {
-        if (!item) continue;
-        if (item['@type'] === 'JobPosting' || (item['@type'] && String(item['@type']).toLowerCase().includes('job'))) {
-          const title = item.title || item.name || '';
-          const company = (item.hiringOrganization && (item.hiringOrganization.name || item.hiringOrganization)) || item.company || '';
-          const location = item.jobLocation?.address?.addressLocality || item.jobLocation || item.address || '';
-          const link = item.url || item.href || targetURL;
-          const key = `${title}|${company}|${link}`;
-          if (title && (looksAviation(title) || looksAviation(company) || looksAviation(item.description))) {
-            if (!seen.has(key)) {
-              seen.add(key);
-              jobs.push({ title: title.trim(), company: String(company).trim(), location: String(location).trim(), link });
-            }
-          }
-        }
-      }
-    } catch (_) {}
-  });
+    if (!href || !title) return;
 
-  // 2) Heuristic DOM parsing: common job-card selectors + generic anchors/articles/list items
-  const candidateSelectors = [
-    '.job-card', '.job-item', '.career-job', '.listing-item', '.result-item', '.job', '.posting', '.job-listing',
-    'article', 'li', '.job-row', '.job-teaser', '.result',
-  ];
-
-  const anchors = $('a[href]').toArray();
-  const candidates = new Set();
-
-  // Add nodes matching selectors
-  candidateSelectors.forEach(sel => {
-    $(sel).each((_, el) => candidates.add(el));
-  });
-
-  // Add anchors that look like job links
-  anchors.forEach(a => {
-    const href = $(a).attr('href') || '';
-    const text = ($(a).text() || '').trim();
-    if (href && (href.toLowerCase().includes('/job') || href.toLowerCase().includes('job') || text.length < 200)) {
-      candidates.add(a);
+    if (/aviation|aircraft|pilot|airport|aero/i.test(title)) {
+      jobs.push({
+        title,
+        company: "Unknown",
+        location: "",
+        link: href.startsWith("http")
+          ? href
+          : `https://mycareers.ph${href}`,
+      });
     }
   });
 
-  // Process candidates
-  for (const el of Array.from(candidates)) {
-    const $el = $(el);
-    // try to find an anchor within or closest anchor
-    let anchor = $el.is('a') ? $el : $el.find('a[href]').first();
-    if (!anchor || !anchor.length) anchor = $el.closest('a').first();
-
-    // Title heuristics
-    let title =
-      ($el.find('.job-title, .title, h2, h3, .posting-title, .jobname').first().text() || '').trim() ||
-      (anchor && ($(anchor).find('h2, h3, .title').first().text() || $(anchor).text())) ||
-      ($el.attr('title') || '');
-
-    // Company heuristics
-    let company =
-      ($el.find('.company-name, .company, .job-company, .company__name, .employer').first().text() || '').trim() ||
-      ($el.find('.company').text() || '').trim();
-
-    // Location heuristics
-    let location =
-      ($el.find('.job-location, .location, .job-meta, .location__name, .job-location__name, .place').first().text() || '').trim();
-
-    // link
-    let href = anchor && $(anchor).attr('href') || '';
-    if (href && !href.startsWith('http')) {
-      if (!href.startsWith('/')) href = '/' + href;
-      const base = new URL(targetURL).origin;
-      href = base + href;
-    }
-    // fallback link: try data-href or onclick
-    if (!href) {
-      href = $el.attr('data-href') || $el.attr('data-url') || '';
-      if (href && !href.startsWith('http')) {
-        const base = new URL(targetURL).origin;
-        if (!href.startsWith('/')) href = '/' + href;
-        href = base + href;
-      }
-    }
-
-    title = (title || '').replace(/\s+/g, ' ').trim();
-    company = (company || '').replace(/\s+/g, ' ').trim();
-
-    // Try to extract text blob and check for aviation terms
-    const blob = [title, company, location, $el.text()].filter(Boolean).join(' ').slice(0, 800);
-    if (!title && anchor) {
-      title = ($(anchor).text() || '').trim();
-    }
-    if (!title && blob.length > 0) {
-      const m = blob.match(/^[^\n]{3,120}/);
-      title = title || (m ? m[0].trim() : '');
-    }
-
-    if (!title && !company) continue;
-    // require some aviation relevance
-    if (!looksAviation(blotify(blob))) {
-      // allow if explicit keyword in title/company
-      if (!looksAviation(title) && !looksAviation(company)) continue;
-    }
-
-    const key = `${title}|${company}|${href}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      jobs.push({ title, company, location: location || '', link: href || targetURL });
-    }
-    // stop early if too many
-    if (jobs.length >= (opts.max || 200)) break;
-  }
-
-  // Dedupe by normalized title+company+link
-  function normalize(s='') { return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); }
-  const unique = [];
-  const uniqSet = new Set();
-  for (const j of jobs) {
-    const k = `${normalize(j.title)}|${normalize(j.company)}|${normalize(j.link)}`;
-    if (!uniqSet.has(k)) {
-      uniqSet.add(k);
-      unique.push(j);
-    }
-  }
-
-  console.log(`[SCRAPER] Found ${unique.length} job(s) — attempts:`, attempts.map(a => ({ url: a.url, status: a.status, error: a.error, attempt: a.attempt, at: a.at })));
-  return { jobs: unique, attempts, note: undefined };
-
-  // local helper to avoid using global variable names accidentally
-  function blotify(s){ return String(s||'').replace(/\s+/g,' ').trim(); }
+  return { ok: true, jobs };
 
 /* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
 api.get(
