@@ -388,14 +388,9 @@ api.get(
 /* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
 
 async function scrapeAviationJobs(opts = {}) {
-  const API_KEY = process.env.SCRAPERAPI_KEY;
   const q = opts.q || "aviation";
 
-  const targetURL =
-    opts.url ||
-    `https://mycareers.ph/job-search?query=${encodeURIComponent(q)}`;
-
-  // ❗ Backend CANNOT fetch directly on Railway — requires frontend HTML
+  // Backend cannot fetch — MUST receive HTML from frontend
   if (!opts.html && !opts.htmlBase64) {
     return {
       ok: false,
@@ -404,12 +399,12 @@ async function scrapeAviationJobs(opts = {}) {
     };
   }
 
-  // ▼ Decode HTML coming from frontend
+  // Decode incoming HTML
   let html = opts.html || "";
   if (opts.htmlBase64) {
     try {
       html = Buffer.from(opts.htmlBase64, "base64").toString("utf8");
-    } catch (_) {
+    } catch (e) {
       return { ok: false, error: "Invalid Base64 HTML" };
     }
   }
@@ -417,7 +412,6 @@ async function scrapeAviationJobs(opts = {}) {
   const $ = cheerio.load(html);
   const jobs = [];
 
-  // Simple parsing: extract aviation-related links
   $("a").each((i, el) => {
     const title = $(el).text().trim();
     const href = $(el).attr("href");
@@ -437,181 +431,32 @@ async function scrapeAviationJobs(opts = {}) {
   });
 
   return { ok: true, jobs };
+}
 
-/* ----------------------------- SCRAPER ROUTE (MUST BE FIRST) ---------------------------- */
-api.get(
-  '/jobs/scrape',
-  asyncH(async (req, res) => {
-    try {
-      // accept query params: q (search term), url (target full url), site (alias), save=true, max (limit)
-      // Also accept `html` (base64 or raw) to parse provided HTML (useful if Railway blocks outbound TLS).
-      const opts = {
-        q: req.query.q,
-        url: req.query.url,
-        site: req.query.site,
-        max: parseInt(req.query.max || '200', 10),
-        html: req.query.html, // optional: base64 or raw HTML
-      };
-      const result = await scrapeAviationJobs(opts);
-      const scraped = Array.isArray(result) ? result : (result.jobs || []);
-      const attempts = result.attempts || [];
+/* ----------------------------- SCRAPER ROUTE ---------------------------- */
 
-      // if scraper returned a note (e.g. proxy/html hint) include it
-      const note = result.note;
+api.post('/jobs/scrape', asyncH(async (req, res) => {
+  const opts = {
+    q: req.body.q,
+    html: req.body.html,
+    htmlBase64: req.body.htmlBase64
+  };
 
-      const saveRequested = String(req.query.save || '').toLowerCase() === 'true';
-      const MAX_SAVE = 50;
-      let created = 0;
-      let skipped = 0;
-      const errors = [];
+  const result = await scrapeAviationJobs(opts);
 
-      if (saveRequested && scraped.length > 0) {
-        const toSave = scraped.slice(0, MAX_SAVE);
-        const ops = toSave.map(async (j) => {
-          try {
-            const exists =
-              (j.link ? await Job.findOne({ link: j.link }) : null) ||
-              (j.title ? await Job.findOne({ title: j.title, companyName: j.company }) : null);
-            if (!exists) {
-              await Job.create({
-                title: j.title,
-                description: 'External aviation job listing (scraped).',
-                companyName: j.company,
-                location: j.location,
-                link: j.link,
-                status: 'active',
-                isApproved: true,
-              });
-              return { status: 'created' };
-            } else {
-              return { status: 'skipped' };
-            }
-          } catch (e) {
-            return { status: 'error', error: e.message || String(e), job: j };
-          }
-        });
+  if (!result.ok) {
+    return res.json({ ok: false, ...result });
+  }
 
-        const results = await Promise.allSettled(ops);
-        for (const r of results) {
-          if (r.status === 'fulfilled') {
-            const v = r.value;
-            if (v.status === 'created') created++;
-            else if (v.status === 'skipped') skipped++;
-            else if (v.status === 'error') errors.push(v);
-          } else {
-            errors.push({ status: 'rejected', reason: String(r.reason) });
-          }
-        }
-      }
+  return res.json({
+    ok: true,
+    found: result.jobs.length,
+    jobs: result.jobs
+  });
+}));
 
-      const resp = {
-        message: 'Scraping complete',
-        found: scraped.length,
-        preview: scraped.slice(0, 20),
-        attempts: attempts,
-        created,
-        skipped,
-        errorsCount: errors.length,
-        saveRequested,
-        savedLimit: saveRequested ? MAX_SAVE : 0,
-        note,
-      };
 
-      if (scraped.length === 0 && attempts.length > 0) {
-        return res.json({ ok: false, note: 'No jobs scraped; see attempts for details', ...resp });
-      }
 
-      return res.json({ ok: true, ...resp });
-    } catch (error) {
-      console.error('Scrape error (unexpected):', error.message || error);
-      return res.status(200).json({ ok: false, error: String(error.message || error) });
-    }
-  })
-);
-
-// Add POST variant so callers can provide HTML directly (raw or base64) to bypass outbound fetch
-api.post(
-  '/jobs/scrape',
-  asyncH(async (req, res) => {
-    // Accept same params as GET but prefer body, and accept body.html (raw or base64)
-    const opts = {
-      q: req.body.q || req.query.q,
-      url: req.body.url || req.query.url,
-      site: req.body.site || req.query.site,
-      max: parseInt(req.body.max || req.query.max || '200', 10),
-      html: req.body.html || req.body.htmlBase64 || null,
-    };
-
-    const result = await scrapeAviationJobs(opts);
-    const scraped = Array.isArray(result) ? result : (result.jobs || []);
-    const attempts = result.attempts || [];
-    const note = result.note;
-
-    const saveRequested = String(req.body.save || req.query.save || '').toLowerCase() === 'true';
-    const MAX_SAVE = 50;
-    let created = 0;
-    let skipped = 0;
-    const errors = [];
-
-    if (saveRequested && scraped.length > 0) {
-      const toSave = scraped.slice(0, MAX_SAVE);
-      const ops = toSave.map(async (j) => {
-        try {
-          const exists =
-            (j.link ? await Job.findOne({ link: j.link }) : null) ||
-            (j.title ? await Job.findOne({ title: j.title, companyName: j.company }) : null);
-          if (!exists) {
-            await Job.create({
-              title: j.title,
-              description: 'External aviation job listing (scraped).',
-              companyName: j.company,
-              location: j.location,
-              link: j.link,
-              status: 'active',
-              isApproved: true,
-            });
-            return { status: 'created' };
-          } else {
-            return { status: 'skipped' };
-          }
-        } catch (e) {
-          return { status: 'error', error: e.message || String(e), job: j };
-        }
-      });
-
-      const results = await Promise.allSettled(ops);
-      for (const r of results) {
-        if (r.status === 'fulfilled') {
-          const v = r.value;
-          if (v.status === 'created') created++;
-          else if (v.status === 'skipped') skipped++;
-          else if (v.status === 'error') errors.push(v);
-        } else {
-          errors.push({ status: 'rejected', reason: String(r.reason) });
-        }
-      }
-    }
-
-    const resp = {
-      message: 'Scraping complete',
-      found: scraped.length,
-      preview: scraped.slice(0, 20),
-      attempts,
-      created,
-      skipped,
-      errorsCount: errors.length,
-      saveRequested,
-      savedLimit: saveRequested ? MAX_SAVE : 0,
-      note,
-    };
-
-    if (scraped.length === 0 && attempts.length > 0) {
-      return res.json({ ok: false, note: 'No jobs scraped; see attempts for details', ...resp });
-    }
-
-    return res.json({ ok: true, ...resp });
-  })
-);
 
 /* ----------------------------- STANDARD JOB ROUTES ---------------------------- */
 api.get(

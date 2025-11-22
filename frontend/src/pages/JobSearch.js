@@ -10,41 +10,26 @@ import {
 import LoadingSpinner from "../components/LoadingSpinner";
 import toast from "react-hot-toast";
 
-async function scrapeJobsFromWeb(query = "aviation") {
-  try {
-    // 1. Fetch HTML directly (frontend can do this, backend cannot)
-    const targetURL = `https://mycareers.ph/job-search?query=${encodeURIComponent(query)}`;
-    const html = await fetch(targetURL).then(res => res.text());
+async function scrapeJobs(query = "aviation") {
+  const targetURL = `https://mycareers.ph/job-search?query=${encodeURIComponent(query)}`;
 
-    // 2. Convert HTML to Base64
-    const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
+  // 1. frontend fetches HTML
+  const html = await fetch(targetURL).then(r => r.text());
 
-    // 3. Send Base64 HTML to backend for parsing
-    const result = await fetch(
-      "https://aerojob-backend-production.up.railway.app/api/jobs/scrape",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ htmlBase64, q: query })
-      }
-    ).then(res => res.json());
+  const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
 
-    console.log("SCRAPED RESULTS:", result);
+  // 2. send HTML to backend
+  const result = await fetch("https://aerojob-backend-production.up.railway.app/api/jobs/scrape", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      q: query,
+      htmlBase64
+    })
+  }).then(r => r.json());
 
-    if (!result.ok) {
-      toast.error("Scraper returned no jobs");
-    } else {
-      toast.success(`Scraped ${result.found} jobs!`);
-    }
-
-    return result;
-
-  } catch (err) {
-    console.error("Scraping failed:", err);
-    toast.error("Failed to scrape jobs");
-  }
+  return result;
 }
-
 
 /* --- time ago helper --- */
 const timeAgo = (isoOrDate) => {
@@ -231,18 +216,18 @@ export default function Jobs() {
           </div>
         </div>
 
-         <button
-  onClick={async () => {
-    const res = await fetch(
-      "https://aerojob-backend-production.up.railway.app/api/jobs/scrape"
-    ).then(r => r.json());
+      <button
+      onClick={async () => {
+        const res = await fetch(
+          "https://aerojob-backend-production.up.railway.app/api/jobs/scrape"
+        ).then(r => r.json());
 
-    console.log(res);
-    alert("Scraped " + (res.jobs?.length || 0) + " jobs!");
-  }}
->
-  🔄 Scrape Jobs
-</button>
+        console.log(res);
+        alert("Scraped " + (res.jobs?.length || 0) + " jobs!");
+      }}
+    >
+      🔄 Scrape Jobs
+    </button>
 
         {hasFilters && (
           <div className="mt-3">
