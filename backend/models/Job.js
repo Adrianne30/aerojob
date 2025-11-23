@@ -25,8 +25,10 @@ const jobSchema = new mongoose.Schema(
     company: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Company',
-      required: [true, 'Company is required'],
+      required: false,  
     },
+
+    companyName: { type: String, trim: true },
 
     /* -------------------------- Job Details -------------------------- */
     jobType: {
