@@ -13,7 +13,7 @@ async function scrapeAviationJobs() {
 
   // Broader aviation/aircraft search
   const targetURL =
-    "https://ph.indeed.com/jobs?q=aviation+tourism+guide+QA+support+tech+OR+aircraft+OR+avionics+OR+technician+OR+mechanic+IT+developer+OR+engineer&l=Philippines";
+    "https://ph.indeed.com/jobs?q=aviation+OR+aircraft+OR+avionics+OR+technician+OR+mechanic+OR+engineer+IT&l=Philippines";
 
   const scraperURL =
     `https://api.scraperapi.com?api_key=${API_KEY}&url=` +
