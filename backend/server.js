@@ -1,321 +1,366 @@
-// AEROJOB API server with Auth, Surveys, Jobs, Companies, Users, Admin stats, Profile, and Analytics endpoints
-require('dotenv').config();
-if (typeof File === 'undefined') global.File = class File {};
+// --------------------------- AEROJOB FINAL SERVER.JS ----------------------------
+// Full backend with Auth, Surveys, Jobs, Companies, Users,
+// Admin stats, Profile routes, Logo upload, Analytics,
+// Proxy, and Multi-Source Job Scraper (Indeed + Jooble + LinkedIn)
+// -------------------------------------------------------------------------------
 
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
-const mongoose = require('mongoose');
-const listEndpoints = require('express-list-endpoints');
-const path = require('path');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const cookieParser = require('cookie-parser');
-const fs = require('fs');
-const multer = require('multer');
-const profileRoutes = require('./routes/profile');
-const { sendMail } = require('./utils/mailer');
-const app = express();
-app.set('trust proxy', 1);
-const axios = require("axios");
-const cheerio = require("cheerio");
-const https = require('https');
-const dns = require('dns');
+require("dotenv").config();
+if (typeof File === "undefined") global.File = class File {};
+
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const mongoose = require("mongoose");
+const listEndpoints = require("express-list-endpoints");
+const path = require("path");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
+const cookieParser = require("cookie-parser");
+const fs = require("fs");
+const multer = require("multer");
 const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
-/* ----------------------------- Security & Logging ----------------------------- */
-app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(morgan('dev'));
+const profileRoutes = require("./routes/profile");
 
-/* ----------------------------- CORS (put FIRST) ------------------------------ */
+// ---------------------------------------------------------------------------------
+// APP INIT
+// ---------------------------------------------------------------------------------
+
+const app = express();
+app.set("trust proxy", 1);
+
+// ---------------------------------------------------------------------------------
+// SECURITY + LOGGER
+// ---------------------------------------------------------------------------------
+
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(morgan("dev"));
+
+// ---------------------------------------------------------------------------------
+// CORS CONFIGURATION
+// ---------------------------------------------------------------------------------
+
 const ALLOWED_ORIGINS = [
-  'https://aerojob.space',
-  'https://www.aerojob.space',
-  'https://api.aerojob.space',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173'
+  "https://aerojob.space",
+  "https://www.aerojob.space",
+  "https://api.aerojob.space",
+  "http://localhost:3000",
+  "http://localhost:5173",
 ];
 
 const corsOptions = {
   origin(origin, cb) {
     if (!origin) return cb(null, true);
     if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return cb(null, true);
-    return cb(new Error('Not allowed by CORS'));
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(origin)) return cb(null, true);
+    return cb(new Error("Not allowed by CORS"));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
 };
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+app.options("*", cors(corsOptions));
 
-/* ----------------------------- CSP HEADER FIX ------------------------------ */
+// ---------------------------------------------------------------------------------
+// CSP HEADER
+// ---------------------------------------------------------------------------------
+
 app.use((req, res, next) => {
   res.setHeader(
-  'Content-Security-Policy',
-  "default-src 'self'; connect-src 'self' https://aerojob.space https://api.aerojob.space https://aerojob-backend-production.up.railway.app https://mycareers.ph; img-src 'self' data: blob: https://aerojob.space https://api.aerojob.space; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';"
-);
+    "Content-Security-Policy",
+    "default-src 'self'; connect-src 'self' https://aerojob.space https://api.aerojob.space https://aerojob-backend-production.up.railway.app https://mycareers.ph https://ph.indeed.com https://www.linkedin.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';"
+  );
   next();
 });
 
-/* ------------------------------- Body Parsers -------------------------------- */
-app.use(express.json({ limit: '2mb' }));
+// ---------------------------------------------------------------------------------
+// BODY & COOKIE
+// ---------------------------------------------------------------------------------
+
+app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-/* ------------------------------ Static Uploads ------------------------------- */
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// ---------------------------------------------------------------------------------
+// STATIC UPLOADS (company logos)
+// ---------------------------------------------------------------------------------
 
-/* ------------------------------- Rate Limiting ------------------------------- */
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// ---------------------------------------------------------------------------------
+// RATE LIMITER
+// ---------------------------------------------------------------------------------
+
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 400,
+    max: 500,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.method === 'OPTIONS',
   })
 );
 
-/* --------------------------------- Database --------------------------------- */
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/aerojob';
-let seedAdmin = null;
-try {
-  seedAdmin = require('./scripts/seedAdmin');
-} catch (_) {}
+// ---------------------------------------------------------------------------------
+// DATABASE
+// ---------------------------------------------------------------------------------
 
 mongoose
-  .connect(MONGODB_URI, { serverSelectionTimeoutMS: 10000 })
-  .then(async () => {
-    console.log('[DB] Connected');
-    if (typeof seedAdmin === 'function') {
-      try {
-        await seedAdmin();
-        console.log('[Seed] Admin ensured');
-      } catch (e) {
-        console.warn('[Seed] Skipped/failed:', e.message);
-      }
-    }
-  })
+  .connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 10000 })
+  .then(() => console.log("✅ [DB] Connected"))
   .catch((err) => {
-    console.error('[DB] Connection error:', err.message);
+    console.error("[DB ERROR]", err.message);
     process.exit(1);
   });
 
-/* ---------------------------------- Models ---------------------------------- */
-const Job = require('./models/Job');
-const Company = require('./models/Company');
-const Survey = require('./models/Survey');
-const User = require('./models/User');
-const SurveyResponse = require('./models/SurveyResponse');
-const SearchLog = require('./models/SearchLog');
+// ---------------------------------------------------------------------------------
+// MODELS
+// ---------------------------------------------------------------------------------
 
-/* ------------------------------- Helpers/Utils ------------------------------- */
-const asyncH = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const Job = require("./models/Job");
+const Company = require("./models/Company");
+const Survey = require("./models/Survey");
+const User = require("./models/User");
+const SurveyResponse = require("./models/SurveyResponse");
+const SearchLog = require("./models/SearchLog");
 
-const JWT_SECRET = process.env.JWT_SECRET || 'devsecret';
-const JWT_EXPIRE = process.env.JWT_EXPIRE || '7d';
+// ---------------------------------------------------------------------------------
+// HELPERS
+// ---------------------------------------------------------------------------------
 
-function signToken(user) {
-  return jwt.sign(
-    { sub: user._id.toString(), role: user.role || user.userType || 'user' },
-    JWT_SECRET,
-    { expiresIn: JWT_EXPIRE }
-  );
-}
+const asyncH =
+  (fn) =>
+  (req, res, next) =>
+    Promise.resolve(fn(req, res, next)).catch(next);
 
-function getTokenFromReq(req) {
-  const h = req.headers.authorization || '';
-  if (h.startsWith('Bearer ')) return h.slice(7);
-  if (req.cookies?.token) return req.cookies.token;
-  return null;
+// ---------------------------------------------------------------------------------
+// JWT HELPERS
+// ---------------------------------------------------------------------------------
+
+const JWT_SECRET = process.env.JWT_SECRET || "devsecret";
+
+function getToken(req) {
+  const h = req.headers.authorization || "";
+  if (h.startsWith("Bearer ")) return h.slice(7);
+  return req.cookies?.token || null;
 }
 
 function requireAuth(req, res, next) {
   try {
-    const token = getTokenFromReq(req);
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const token = getToken(req);
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+
     const payload = jwt.verify(token, JWT_SECRET);
     req.userId = payload.sub;
-    req.userRole = (payload.role || '').toLowerCase();
+    req.userRole = payload.role;
     next();
-  } catch (e) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+  } catch {
+    return res.status(401).json({ error: "Invalid token" });
   }
 }
 
 function requireAdmin(req, res, next) {
-  requireAuth(req, res, (err) => {
-    if (err) return;
-    if ((req.userRole || '').toLowerCase() !== 'admin')
-      return res.status(403).json({ error: 'Admin only' });
+  requireAuth(req, res, () => {
+    if (req.userRole !== "admin")
+      return res.status(403).json({ error: "Admin only" });
     next();
   });
 }
 
-/* ------------------------------ Mount /api/auth & /api/profile ------------------- */
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/profile', profileRoutes);
+// ---------------------------------------------------------------------------------
+// AUTH + PROFILE ROUTES
+// ---------------------------------------------------------------------------------
 
-app.get('/api/auth/me', requireAuth, asyncH(async (req, res) => {
-  const user = await User.findById(req.userId).select('-password');
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json(user);
-}));
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/profile", profileRoutes);
 
-/* --------------------------- File Upload: Company Logo ----------------------- */
-const UPLOAD_ROOT = path.join(__dirname, 'uploads');
-const COMPANY_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'companies');
-fs.mkdirSync(COMPANY_UPLOAD_DIR, { recursive: true });
+// ---------------------------------------------------------------------------------
+// GET LOGGED-IN USER
+// ---------------------------------------------------------------------------------
+
+app.get(
+  "/api/auth/me",
+  requireAuth,
+  asyncH(async (req, res) => {
+    const user = await User.findById(req.userId).select("-password");
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json(user);
+  })
+);
+
+// ---------------------------------------------------------------------------------
+// FILE UPLOAD – COMPANY LOGO
+// ---------------------------------------------------------------------------------
+
+const UPLOAD_ROOT = path.join(__dirname, "uploads", "companies");
+fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, COMPANY_UPLOAD_DIR),
+  destination: (_req, _file, cb) => cb(null, UPLOAD_ROOT),
   filename: (_req, file, cb) => {
-    const safe = file.originalname.replace(/\s+/g, '_');
-    cb(null, `${Date.now()}-${safe}`);
+    const safe = file.originalname.replace(/\s+/g, "_");
+    cb(null, Date.now() + "-" + safe);
   },
 });
-function imageFileFilter(_req, file, cb) {
-  if (!/^image\/(png|jpeg|jpg|gif|webp|svg\+xml)$/.test(file.mimetype)) {
-    return cb(new Error('Only image files are allowed (png, jpg, jpeg, gif, webp, svg)'));
-  }
-  cb(null, true);
-}
+
 const upload = multer({
   storage,
-  fileFilter: imageFileFilter,
   limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!/^image\/(png|jpeg|jpg|gif|webp|svg\+xml)$/.test(file.mimetype)) {
+      return cb(new Error("Only image files allowed"));
+    }
+    cb(null, true);
+  },
 });
 
-app.post('/upload/logo', (req, res) => {
-  upload.single('logo')(req, res, (err) => {
+app.post("/upload/logo", (req, res) => {
+  upload.single("logo")(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
     const url = `/uploads/companies/${req.file.filename}`;
-    return res.json({ url });
+    res.json({ url });
   });
 });
 
-/* ---------------------------------- /api ------------------------------------ */
+// ---------------------------------------------------------------------------------
+// API ROUTER
+// ---------------------------------------------------------------------------------
+
 const api = express.Router();
 
-/* Health */
-api.get('/health', (req, res) => {
+// ---------------------------------------------------------------------------------
+// HEALTH CHECK
+// ---------------------------------------------------------------------------------
+
+api.get("/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-/* ------------------------------- SURVEYS ------------------------------------ */
+// ---------------------------------------------------------------------------------
+// SURVEY API (FULL)
+// ---------------------------------------------------------------------------------
+
+// GET ALL SURVEYS
 api.get(
-  '/surveys',
+  "/surveys",
   asyncH(async (_req, res) => {
     const surveys = await Survey.find().sort({ createdAt: -1 });
     res.json(surveys);
   })
 );
 
+// GET ONE SURVEY
 api.get(
-  '/surveys/:id',
+  "/surveys/:id",
   asyncH(async (req, res) => {
     const survey = await Survey.findById(req.params.id);
-    if (!survey) return res.status(404).json({ error: 'Survey not found' });
+    if (!survey) return res.status(404).json({ error: "Survey not found" });
     res.json(survey);
   })
 );
 
+// CREATE SURVEY
 api.post(
-  '/surveys',
+  "/surveys",
   asyncH(async (req, res) => {
     const survey = await Survey.create(req.body);
     res.status(201).json(survey);
   })
 );
 
+// UPDATE SURVEY
 api.put(
-  '/surveys/:id',
+  "/surveys/:id",
   asyncH(async (req, res) => {
-    const survey = await Survey.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!survey) return res.status(404).json({ error: 'Survey not found' });
+    const survey = await Survey.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
+    if (!survey) return res.status(404).json({ error: "Survey not found" });
     res.json(survey);
   })
 );
 
+// DELETE SURVEY
 api.delete(
-  '/surveys/:id',
+  "/surveys/:id",
   asyncH(async (req, res) => {
     const deleted = await Survey.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: 'Survey not found' });
-    await SurveyResponse.deleteMany({ $or: [{ survey: deleted._id }, { surveyId: deleted._id }] });
+    if (!deleted)
+      return res.status(404).json({ error: "Survey not found" });
+
+    await SurveyResponse.deleteMany({
+      $or: [{ survey: deleted._id }, { surveyId: deleted._id }],
+    });
+
     res.json({ deleted: true });
   })
 );
 
+// GET ELIGIBLE ACTIVE SURVEYS
 api.get(
-  '/surveys/active/eligible',
+  "/surveys/active/eligible",
   requireAuth,
   asyncH(async (req, res) => {
-    const role = (req.userRole || '').toLowerCase();
+    const role = (req.userRole || "").toLowerCase();
+    const audienceOr = [{ audience: "all" }];
 
-    const audienceOr = [{ audience: 'all' }];
-    if (role === 'student') audienceOr.push({ audience: 'students' }, { audience: 'student' });
-    if (role === 'alumni')
-      audienceOr.push({ audience: 'alumni' }, { audience: 'alumnus' }, { audience: 'alumnae' }, { audience: 'alumna' });
+    if (role === "student")
+      audienceOr.push({ audience: "students" }, { audience: "student" });
 
-    const activeList = await Survey.find({
-      status: { $regex: /^active$/i },
+    if (role === "alumni")
+      audienceOr.push(
+        { audience: "alumni" },
+        { audience: "alumnus" },
+        { audience: "alumnae" },
+        { audience: "alumna" }
+      );
+
+    const active = await Survey.find({
+      status: /^active$/i,
       $or: audienceOr,
     }).sort({ createdAt: -1 });
 
-    if (!req.userId) return res.json(activeList);
-
-    const answeredA = await SurveyResponse.find({
+    const responses = await SurveyResponse.find({
       $or: [{ user: req.userId }, { userId: req.userId }],
-    }).distinct('survey');
+    }).distinct("survey");
 
-    const answeredB = await SurveyResponse.find({
-      $or: [{ user: req.userId }, { userId: req.userId }],
-    }).distinct('surveyId');
-
-    const answered = new Set([...answeredA.map(String), ...answeredB.map(String)]);
-    const eligible = activeList.filter((s) => !answered.has(String(s._id)));
-
+    const eligible = active.filter((s) => !responses.includes(String(s._id)));
     res.json(eligible);
   })
 );
 
+// SUBMIT SURVEY RESPONSE
 api.post(
-  '/surveys/:id/responses',
+  "/surveys/:id/responses",
   requireAuth,
   asyncH(async (req, res) => {
     const survey = await Survey.findById(req.params.id);
-    if (!survey) return res.status(404).json({ error: 'Survey not found' });
+    if (!survey) return res.status(404).json({ error: "Survey not found" });
 
     let answers = Array.isArray(req.body.answers) ? req.body.answers : [];
+
     answers = answers
       .map((a, idx) => {
-        if (a && typeof a === 'object' && ('questionId' in a || 'qid' in a)) {
+        if (typeof a === "object" && (a.questionId || a.qid))
           return { questionId: a.questionId || a.qid, value: a.value };
-        }
+
         const qid = survey.questions?.[idx]?._id;
         return qid ? { questionId: qid, value: a } : null;
       })
       .filter(Boolean);
 
-    for (const q of survey.questions || []) {
+    for (const q of survey.questions) {
       if (!q.required) continue;
-      const found = answers.find((a) => String(a.questionId) === String(q._id));
-      const empty =
-        found == null ||
-        found.value == null ||
-        (Array.isArray(found.value) ? found.value.length === 0 : String(found.value).trim() === '');
-      if (empty) {
-        return res.status(400).json({ error: `Question "${q.text}" is required.` });
-      }
+      const found = answers.find(
+        (a) => String(a.questionId) === String(q._id)
+      );
+      if (!found || !found.value)
+        return res
+          .status(400)
+          .json({ error: `Question "${q.text}" is required.` });
     }
 
     const doc = await SurveyResponse.create({
@@ -330,110 +375,136 @@ api.post(
   })
 );
 
+// GET SURVEY RESPONSES
 api.get(
-  '/surveys/:id/responses',
+  "/surveys/:id/responses",
   asyncH(async (req, res) => {
-    const surveyExists = await Survey.exists({ _id: req.params.id });
-    if (!surveyExists) return res.status(404).json({ error: 'Survey not found' });
+    const exists = await Survey.exists({ _id: req.params.id });
+    if (!exists) return res.status(404).json({ error: "Survey not found" });
 
     const responses = await SurveyResponse.find({
       $or: [{ survey: req.params.id }, { surveyId: req.params.id }],
     })
-      .populate('user', 'firstName lastName email role userType')
+      .populate("user", "firstName lastName email role userType")
       .sort({ createdAt: -1 });
 
     res.json(responses);
   })
 );
 
+// DELETE RESPONSE
 api.delete(
-  '/survey-responses/:id',
+  "/survey-responses/:id",
   asyncH(async (req, res) => {
     const deleted = await SurveyResponse.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: 'Response not found' });
+    if (!deleted)
+      return res.status(404).json({ error: "Response not found" });
+
     res.json({ deleted: true });
   })
 );
 
+// EXPORT RESPONSES TO CSV
 api.get(
-  '/surveys/:id/responses/export',
+  "/surveys/:id/responses/export",
   asyncH(async (req, res) => {
     const id = req.params.id;
+
     const rows = await SurveyResponse.find({
       $or: [{ survey: id }, { surveyId: id }],
     })
-      .populate('user', 'firstName lastName email role userType')
+      .populate("user", "firstName lastName email role userType")
       .lean();
 
-    const headers = ['_id', 'createdAt', 'userEmail', 'userName', 'role', 'answers'];
-    const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const headers = [
+      "_id",
+      "createdAt",
+      "userEmail",
+      "userName",
+      "role",
+      "answers",
+    ];
+    const escape = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+
     const lines = [
-      headers.join(','),
+      headers.join(","),
       ...rows.map((r) =>
         [
           r._id,
-          r.createdAt?.toISOString?.() || '',
-          r.user?.email || '',
-          [r.user?.firstName, r.user?.lastName].filter(Boolean).join(' ') || '',
-          r.user?.role || r.user?.userType || '',
-          JSON.stringify(r.answers ?? []),
-        ].map(escape).join(',')
+          r.createdAt?.toISOString?.() || "",
+          r.user?.email || "",
+          [r.user?.firstName, r.user?.lastName].filter(Boolean).join(" "),
+          r.user?.role || "",
+          JSON.stringify(r.answers || []),
+        ]
+          .map(escape)
+          .join(",")
       ),
     ];
-    const csv = lines.join('\n');
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="responses.csv"');
-    res.send(csv);
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="responses.csv"'
+    );
+    res.send(lines.join("\n"));
   })
 );
 
+// ---------------------------------------------------------------------------------
 // PUBLIC PROXY — allows frontend to fetch blocked external pages
+// ---------------------------------------------------------------------------------
+
 app.get("/proxy", async (req, res) => {
   try {
     const url = req.query.url;
     if (!url) return res.status(400).json({ error: "No URL provided" });
 
     const API_KEY = process.env.SCRAPERAPI_KEY;
-    if (!API_KEY) return res.status(500).json({ error: "Missing SCRAPERAPI_KEY" });
+    if (!API_KEY)
+      return res.status(500).json({ error: "Missing SCRAPERAPI_KEY" });
 
     const scraperUrl =
-      `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(url)}`;
+      `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=` +
+      encodeURIComponent(url);
 
     const response = await fetch(scraperUrl);
     const html = await response.text();
 
     res.send(html);
-
   } catch (err) {
     console.error("Proxy ERROR:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
+// ---------------------------------------------------------------------------------
+// SCRAPER API ROUTE — fetches aviation jobs (multi-source ready)
+// ---------------------------------------------------------------------------------
 
-/* ------------------------- SCRAPER API ROUTE ------------------------- */
-const scrapeAviationJobs = require("./scraper/scraper"); 
+const scrapeAviationJobs = require("./scraper/scraper");
+
 api.get(
   "/jobs/scrape",
   asyncH(async (req, res) => {
     try {
       const scraped = await scrapeAviationJobs();
 
-      // Insert into DB (avoid duplicates)
       let created = 0;
-      for (const job of scraped) {
+
+      for (const j of scraped) {
         const exists = await Job.findOne({
-          title: job.title,
-          companyName: job.company,
+          title: j.title,
+          companyName: j.company,
         });
 
         if (!exists) {
           await Job.create({
-            title: job.title,
+            title: j.title,
+            companyName: j.company,
             description: "Scraped aviation job posting.",
-            companyName: job.company,
-            location: job.location,
-            link: job.link,
+            location: j.location,
+            link: j.link,
             status: "active",
             isApproved: true,
           });
@@ -454,88 +525,123 @@ api.get(
   })
 );
 
+// ---------------------------------------------------------------------------------
+// STANDARD JOB ROUTES (CRUD)
+// ---------------------------------------------------------------------------------
 
-/* ----------------------------- STANDARD JOB ROUTES ---------------------------- */
+// GET ALL JOBS
 api.get(
-  '/jobs',
+  "/jobs",
   asyncH(async (req, res) => {
     const q = {};
+
     if (req.query.q) q.$text = { $search: req.query.q };
     if (req.query.jobType) q.jobType = req.query.jobType;
-    if (req.query.location) q.location = new RegExp(`^${req.query.location}$`, 'i');
+    if (req.query.location)
+      q.location = new RegExp(`^${req.query.location}$`, "i");
     if (req.query.category) q.categories = req.query.category;
-    if (req.query.approvedOnly === 'true') q.isApproved = true;
+    if (req.query.approvedOnly === "true") q.isApproved = true;
     if (req.query.status) q.status = req.query.status;
 
     const jobs = await Job.find(q)
-      .populate('company', 'name logoUrl location website industry email phone')
+      .populate("company", "name logoUrl location website industry email phone")
       .sort({ createdAt: -1 });
+
     res.json(jobs);
   })
 );
 
+// GET JOB CATEGORY LIST
 api.get(
-  '/jobs/categories',
+  "/jobs/categories",
   asyncH(async (_req, res) => {
-    const list = await Job.distinct('categories', { categories: { $ne: null } });
+    const list = await Job.distinct("categories", {
+      categories: { $ne: null },
+    });
     res.json(list.filter(Boolean).sort());
   })
 );
 
+// GET SINGLE JOB
 api.get(
-  '/jobs/:id',
+  "/jobs/:id",
   asyncH(async (req, res) => {
-    const job = await Job.findById(req.params.id)
-      .populate('company', 'name logoUrl location website industry email phone');
-    if (!job) return res.status(404).json({ error: 'Job not found' });
+    const job = await Job.findById(req.params.id).populate(
+      "company",
+      "name logoUrl location website industry email phone"
+    );
+    if (!job) return res.status(404).json({ error: "Job not found" });
     res.json(job);
   })
 );
 
+// CREATE JOB
 api.post(
-  '/jobs',
+  "/jobs",
   asyncH(async (req, res) => {
     if (req.body.company) {
       const exists = await Company.exists({ _id: req.body.company });
-      if (!exists) return res.status(400).json({ error: 'Invalid company ID' });
+      if (!exists)
+        return res.status(400).json({ error: "Invalid company ID" });
     }
+
     const job = await Job.create({
       ...req.body,
-      status: req.body.status || 'active',
+      status: req.body.status || "active",
       isApproved: true,
     });
-    await job.populate('company', 'name logoUrl location website industry email phone');
+
+    await job.populate(
+      "company",
+      "name logoUrl location website industry email phone"
+    );
+
     res.status(201).json(job);
   })
 );
 
+// UPDATE JOB
 api.put(
-  '/jobs/:id',
+  "/jobs/:id",
   asyncH(async (req, res) => {
     if (req.body.company) {
       const exists = await Company.exists({ _id: req.body.company });
-      if (!exists) return res.status(400).json({ error: 'Invalid company ID' });
+      if (!exists)
+        return res.status(400).json({ error: "Invalid company ID" });
     }
+
     const job = await Job.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
-    }).populate('company', 'name logoUrl location website industry email phone');
-    if (!job) return res.status(404).json({ error: 'Job not found' });
+    }).populate(
+      "company",
+      "name logoUrl location website industry email phone"
+    );
+
+    if (!job) return res.status(404).json({ error: "Job not found" });
+
     res.json(job);
   })
 );
 
+// DELETE JOB
 api.delete(
-  '/jobs/:id',
+  "/jobs/:id",
   asyncH(async (req, res) => {
     const deleted = await Job.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: 'Job not found' });
+    if (!deleted) return res.status(404).json({ error: "Job not found" });
     res.json({ deleted: true });
   })
 );
 
-/* -------------------------------- COMPANIES --------------------------------- */
-const isValidEmail = (v) => (typeof v === 'string' ? /.+\@.+\..+/.test(v) : false);
+
+// ---------------------------------------------------------------------------------
+// COMPANY HELPERS
+// ---------------------------------------------------------------------------------
+
+const isValidEmail = (v) =>
+  typeof v === "string" ? /.+\@.+\..+/.test(v) : false;
+
 const pickCompanyFields = (src = {}) => {
   const out = {};
   if (src.name != null) out.name = String(src.name).trim();
@@ -546,12 +652,16 @@ const pickCompanyFields = (src = {}) => {
   if (src.email != null) out.email = String(src.email).trim().toLowerCase();
   if (src.phone != null) out.phone = String(src.phone).trim();
   if (src.logoUrl != null) out.logoUrl = String(src.logoUrl).trim();
-  if (typeof src.isActive === 'boolean') out.isActive = src.isActive;
+  if (typeof src.isActive === "boolean") out.isActive = src.isActive;
   return out;
 };
 
+// ---------------------------------------------------------------------------------
+// COMPANY ROUTES
+// ---------------------------------------------------------------------------------
+
 api.get(
-  '/companies',
+  "/companies",
   asyncH(async (_req, res) => {
     const companies = await Company.find().sort({ createdAt: -1 });
     res.json({ companies });
@@ -559,31 +669,34 @@ api.get(
 );
 
 api.get(
-  '/companies/:id',
+  "/companies/:id",
   asyncH(async (req, res) => {
     const company = await Company.findById(req.params.id);
-    if (!company) return res.status(404).json({ error: 'Company not found' });
+    if (!company) return res.status(404).json({ error: "Company not found" });
     res.json({ company });
   })
 );
 
 api.post(
-  '/companies',
+  "/companies",
   asyncH(async (req, res) => {
     const body = pickCompanyFields(req.body);
 
-    if (!body.name) return res.status(400).json({ message: 'Company name is required' });
+    if (!body.name)
+      return res.status(400).json({ message: "Company name is required" });
 
     const dup = await Company.findOne({ name: body.name });
-    if (dup) return res.status(409).json({ message: 'Company already exists' });
+    if (dup)
+      return res.status(409).json({ message: "Company already exists" });
 
     if (body.email && !isValidEmail(body.email)) {
-      return res.status(400).json({ message: 'Please provide a valid email address' });
+      return res.status(400).json({ message: "Invalid email address" });
     }
 
     const company = await Company.create({
       ...body,
-      isActive: typeof body.isActive === 'boolean' ? body.isActive : true,
+      isActive:
+        typeof body.isActive === "boolean" ? body.isActive : true,
     });
 
     res.status(201).json({ company });
@@ -591,87 +704,108 @@ api.post(
 );
 
 api.put(
-  '/companies/:id',
+  "/companies/:id",
   asyncH(async (req, res) => {
     const update = pickCompanyFields(req.body);
 
     if (update.name) {
-      const clash = await Company.findOne({ name: update.name, _id: { $ne: req.params.id } });
-      if (clash) return res.status(409).json({ message: 'Company name already in use' });
+      const clash = await Company.findOne({
+        name: update.name,
+        _id: { $ne: req.params.id },
+      });
+      if (clash)
+        return res.status(409).json({
+          message: "Company name already in use",
+        });
     }
 
     if (update.email && !isValidEmail(update.email)) {
-      return res.status(400).json({ message: 'Please provide a valid email address' });
+      return res.status(400).json({ message: "Invalid email address" });
     }
 
-    const company = await Company.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+    const company = await Company.findByIdAndUpdate(
+      req.params.id,
+      update,
+      { new: true, runValidators: true }
+    );
 
-    if (!company) return res.status(404).json({ error: 'Company not found' });
+    if (!company) return res.status(404).json({ error: "Company not found" });
     res.json({ company });
   })
 );
 
 api.delete(
-  '/companies/:id',
+  "/companies/:id",
   asyncH(async (req, res) => {
     const deleted = await Company.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: 'Company not found' });
-    res.json({ message: 'Company deleted' });
+    if (!deleted) return res.status(404).json({ error: "Company not found" });
+    res.json({ message: "Company deleted" });
   })
 );
 
-/* ---------------------------------- USERS (Public/Generic) ------------------- */
+// ---------------------------------------------------------------------------------
+// PUBLIC USERS CRUD
+// ---------------------------------------------------------------------------------
+
 api.get(
-  '/users',
+  "/users",
   asyncH(async (req, res) => {
     const { role, status, course } = req.query;
     const q = {};
     if (role) q.role = role;
     if (status) q.status = status;
     if (course) q.course = course;
+
     const users = await User.find(q).sort({ createdAt: -1 });
     res.json(users);
   })
 );
 
 api.get(
-  '/users/:id',
+  "/users/:id",
   asyncH(async (req, res) => {
     const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user) return res.status(404).json({ error: "User not found" });
     res.json(user);
   })
 );
 
 api.post(
-  '/users',
+  "/users",
   asyncH(async (req, res) => {
-    const user = await User.create(req.body); // ensure model hashes password
+    const user = await User.create(req.body);
     res.status(201).json(user);
   })
 );
 
 api.put(
-  '/users/:id',
+  "/users/:id",
   asyncH(async (req, res) => {
-    const user = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ error: "User not found" });
     res.json(user);
   })
 );
 
 api.delete(
-  '/users/:id',
+  "/users/:id",
   asyncH(async (req, res) => {
     const deleted = await User.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: 'User not found' });
+    if (!deleted) return res.status(404).json({ error: "User not found" });
     res.json({ deleted: true });
   })
 );
 
-/* ------------------------------- ADMIN USERS -------------------------------- */
+// ---------------------------------------------------------------------------------
+// ADMIN USER ROUTES
+// ---------------------------------------------------------------------------------
+
 api.get(
-  '/admin/users',
+  "/admin/users",
   requireAdmin,
   asyncH(async (_req, res) => {
     const users = await User.find().sort({ createdAt: -1 });
@@ -680,38 +814,58 @@ api.get(
 );
 
 api.get(
-  '/admin/users/:id',
+  "/admin/users/:id",
   requireAdmin,
   asyncH(async (req, res) => {
     const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user) return res.status(404).json({ error: "User not found" });
     res.json(user);
   })
 );
 
 api.post(
-  '/admin/users',
+  "/admin/users",
   requireAdmin,
   asyncH(async (req, res) => {
     const {
-      role, userType, firstName, lastName, email,
-      password, studentId, course, yearLevel, phone, status
+      role,
+      userType,
+      firstName,
+      lastName,
+      email,
+      password,
+      studentId,
+      course,
+      yearLevel,
+      phone,
+      status,
     } = req.body || {};
 
-    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+    if (!email || !password)
+      return res
+        .status(400)
+        .json({ error: "Email and password are required" });
 
-    const exists = await User.findOne({ email: String(email).toLowerCase().trim() });
-    if (exists) return res.status(409).json({ error: 'Email already exists' });
+    const exists = await User.findOne({
+      email: String(email).toLowerCase().trim(),
+    });
+
+    if (exists)
+      return res.status(409).json({ error: "Email already exists" });
 
     const hash = await bcrypt.hash(String(password), 10);
 
     const user = await User.create({
-      role: (role || userType || 'Student').toLowerCase(),
-      firstName, lastName,
+      role: (role || userType || "student").toLowerCase(),
+      firstName,
+      lastName,
       email: String(email).toLowerCase().trim(),
       password: hash,
-      studentId, course, yearLevel, phone,
-      status: status || 'active',
+      studentId,
+      course,
+      yearLevel,
+      phone,
+      status: status || "active",
     });
 
     res.status(201).json(user);
@@ -719,48 +873,57 @@ api.post(
 );
 
 api.put(
-  '/admin/users/:id',
+  "/admin/users/:id",
   requireAdmin,
   asyncH(async (req, res) => {
     const update = { ...req.body };
+
     if (update.password) {
       update.password = await bcrypt.hash(String(update.password), 10);
     }
+
     if (update.email) {
       update.email = String(update.email).toLowerCase().trim();
     }
-    const user = await User.findByIdAndUpdate(req.params.id, update, { new: true });
-    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const user = await User.findByIdAndUpdate(req.params.id, update, {
+      new: true,
+    });
+
+    if (!user) return res.status(404).json({ error: "User not found" });
     res.json(user);
   })
 );
 
 api.delete(
-  '/admin/users/:id',
+  "/admin/users/:id",
   requireAdmin,
   asyncH(async (req, res) => {
     const deleted = await User.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: 'User not found' });
+    if (!deleted) return res.status(404).json({ error: "User not found" });
     res.json({ deleted: true });
   })
 );
 
-/* ------------------------------- STUDENT STATS ------------------------------ */
+// ---------------------------------------------------------------------------------
+// STUDENT STATS
+// ---------------------------------------------------------------------------------
+
 api.get(
-  '/student/stats',
+  "/student/stats",
   requireAuth,
   asyncH(async (req, res) => {
     try {
       const user = await User.findById(req.userId);
-      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (!user) return res.status(404).json({ error: "User not found" });
 
-      // Available jobs: count all active jobs (uniform with admin)
-      const availableJobs = await Job.countDocuments({ status: 'active' });
+      const availableJobs = await Job.countDocuments({ status: "active" });
 
-      // Jobs viewed (search logs)
-      const viewed = await SearchLog.countDocuments({ user: req.userId, role: /student/i });
+      const viewed = await SearchLog.countDocuments({
+        user: req.userId,
+        role: /student/i,
+      });
 
-      // Companies
       const companies = await Company.countDocuments();
 
       res.json({
@@ -770,20 +933,22 @@ api.get(
         companies,
       });
     } catch (err) {
-      console.error('Student stats error:', err);
-      res.status(500).json({ success: false, error: 'Server error' });
+      console.error("Student stats error:", err);
+      res.status(500).json({ success: false, error: "Server error" });
     }
   })
 );
 
-// Add admin stats endpoint (uniform with student stats)
+// ---------------------------------------------------------------------------------
+// ADMIN STATS
+// ---------------------------------------------------------------------------------
+
 api.get(
-  '/admin/stats',
+  "/admin/stats",
   requireAdmin,
   asyncH(async (_req, res) => {
     try {
-      // Available jobs: count all active jobs (same logic as student)
-      const availableJobs = await Job.countDocuments({ status: 'active' });
+      const availableJobs = await Job.countDocuments({ status: "active" });
       const companies = await Company.countDocuments();
       const users = await User.countDocuments();
       const totalSearches = await SearchLog.countDocuments();
@@ -796,66 +961,162 @@ api.get(
         totalSearches,
       });
     } catch (err) {
-      console.error('Admin stats error:', err);
-      res.status(500).json({ success: false, error: 'Server error' });
+      console.error("Admin stats error:", err);
+      res.status(500).json({ success: false, error: "Server error" });
     }
   })
 );
 
-/* ------------------------------ ANALYTICS (search) --------------------------- */
+// ---------------------------------------------------------------------------------
+// SEARCH ANALYTICS LOGGING
+// ---------------------------------------------------------------------------------
+
 api.post(
-  '/analytics/search',
-  asyncH(async req => {
-    const raw = String(req.body?.term || '').trim();
-    if (!raw) return res.status(400).json({ ok: false, error: 'term required' });
+  "/analytics/search",
+  asyncH(async (req, res) => {
+    const raw = String(req.body?.term || "").trim();
+    if (!raw) return res.status(400).json({ ok: false, error: "term required" });
 
     let userId = null;
-    let role = 'guest';
+    let role = "guest";
+
     const tok = getTokenFromReq(req);
     if (tok) {
       try {
         const payload = jwt.verify(tok, JWT_SECRET);
         userId = payload.sub || null;
-        role = (payload.role || 'guest').toLowerCase();
+        role = (payload.role || "guest").toLowerCase();
       } catch (_) {}
     } else if (req.body?.role) {
       role = String(req.body.role).toLowerCase();
     }
 
     const term = raw.toLowerCase();
+
     try {
       await SearchLog.create({ term, user: userId, role });
     } catch (_) {}
+
     res.json({ ok: true });
   })
 );
 
-/* ------------------------------- Mount API routes --------------------------- */
-app.use('/api', api);
+// ---------------------------------------------------------------------------------
+// MOUNT API ROUTES
+// ---------------------------------------------------------------------------------
 
-/* ---------------------------- Serve Frontend Build --------------------------- */
+app.use("/api", api);
+
+// ---------------------------------------------------------------------------------
+// SERVE FRONTEND BUILD
+// ---------------------------------------------------------------------------------
+
 const frontendPath = path.join(__dirname, "../frontend/build");
+
 app.use(express.static(frontendPath));
+
 app.get("*", (req, res) => {
-  if (req.originalUrl.startsWith("/api"))
+  if (req.originalUrl.startsWith("/api")) {
     return res.status(404).json({ error: "API route not found" });
+  }
+
   res.sendFile(path.join(frontendPath, "index.html"));
 });
 
-/* -------------------------- Error Handlers & Start --------------------------- */
+// ---------------------------------------------------------------------------------
+// ERROR HANDLER
+// ---------------------------------------------------------------------------------
+
 app.use((err, _req, res, _next) => {
-  console.error('[API Error]', err);
-  res.status(err.status || 500).json({ error: err.message || 'Server error' });
+  console.error("[API ERROR]", err);
+  res.status(err.status || 500).json({
+    error: err.message || "Server error",
+  });
 });
 
+// ---------------------------------------------------------------------------------
+// START SERVER
+// ---------------------------------------------------------------------------------
+
 const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, () => {
-  console.log(`✅ API running on port ${PORT}`);
+  console.log(`🚀 API running on port ${PORT}`);
+
   try {
     const table = listEndpoints(app).map((e) => ({
-      methods: e.methods.join(','),
+      method: e.methods.join(","),
       path: e.path,
     }));
     console.table(table);
-  } catch (_) {}
+  } catch (err) {
+    console.warn("Could not print endpoints:", err.message);
+  }
 });
+
+
+/* ===========================
+   SCRAPER: AVIATION JOBS
+   =========================== */
+
+const axios = require("axios");
+const cheerio = require("cheerio");
+
+async function scrapeAviationJobs() {
+  const API_KEY = process.env.SCRAPERAPI_KEY;
+
+  if (!API_KEY) {
+    console.error("❌ Missing SCRAPERAPI_KEY");
+    return [];
+  }
+
+  // Aviation-focused keywords
+  const targetURL =
+    "https://ph.indeed.com/jobs?q=aircraft+OR+aviation+OR+avionics+OR+mechanic+OR+technician+OR+engineer&l=Philippines";
+
+  const scraperURL =
+    `https://api.scraperapi.com?api_key=${API_KEY}&render=true&url=${encodeURIComponent(targetURL)}`;
+
+  console.log("[SCRAPER] Fetching aviation jobs from Indeed…");
+
+  let response;
+  try {
+    response = await axios.get(scraperURL, {
+      timeout: 35000,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Accept: "text/html",
+      },
+    });
+  } catch (err) {
+    console.error("[SCRAPER ERROR] Could not fetch:", err.message);
+    return [];
+  }
+
+  const html = response.data;
+  const $ = cheerio.load(html);
+  const jobs = [];
+
+  $(".job_seen_beacon").each((_, el) => {
+    const title = $(el).find("h2 a").text().trim();
+    const company = $(el).find(".companyName").text().trim();
+    const location = $(el).find(".companyLocation").text().trim();
+    const link =
+      "https://ph.indeed.com" + ($(el).find("h2 a").attr("href") || "");
+
+    if (title && company) {
+      jobs.push({
+        title,
+        company,
+        location: location || "Philippines",
+        link,
+      });
+    }
+  });
+
+  console.log(`[SCRAPER] SUCCESS — Found ${jobs.length} aviation jobs.`);
+  return jobs;
+}
+
+module.exports = scrapeAviationJobs;
