@@ -411,58 +411,8 @@ app.get("/proxy", async (req, res) => {
 });
 
 
-/* ----------------------------- JOB SCRAPING (MYCAREERSPH) ---------------------------- */
-async function scrapeAviationJobs({ q = "aviation", html, htmlBase64 }) {
-  // 1) IF HTML is provided → parse it (Railway-safe)
-  let finalHtml = null;
-
-  if (htmlBase64) {
-    try {
-      finalHtml = Buffer.from(htmlBase64, "base64").toString("utf8");
-    } catch (e) {
-      return { ok: false, error: "Invalid base64 HTML" };
-    }
-  }
-
-  if (html && !finalHtml) {
-    finalHtml = String(html);
-  }
-
-  // If no HTML → cannot scrape on Railway
-  if (!finalHtml) {
-    return {
-      ok: false,
-      error: "Backend cannot fetch external HTML. Frontend must send HTML via htmlBase64."
-    };
-  }
-
-  // 2) PARSE HTML
-  const $ = cheerio.load(finalHtml);
-  const jobs = [];
-
-  $("a").each((i, el) => {
-    const title = $(el).text().trim();
-    const link = $(el).attr("href");
-
-    if (!title || !link) return;
-
-    if (/aviation|aircraft|pilot|airport|engineer/i.test(title)) {
-      jobs.push({
-        title,
-        company: "Unknown",
-        location: "",
-        link: link.startsWith("http") ? link : `https://mycareers.ph${link}`,
-      });
-    }
-  });
-
-  return { ok: true, jobs };
-}
-
-
 /* ------------------------- SCRAPER API ROUTE ------------------------- */
-const scrapeAviationJobs = require("./scraper/scraper"); // <--- update path if needed
-
+const scrapeAviationJobs = require("./scraper/scraper"); 
 api.get(
   "/jobs/scrape",
   asyncH(async (req, res) => {
