@@ -1,97 +1,89 @@
-/* ----------------------------- JOB SCRAPING (INDEED MULTI-PAGE) ---------------------------- */
+/* ----------------------------- JOB SCRAPING (INDEED) ---------------------------- */
 
 const axios = require("axios");
 const cheerio = require("cheerio");
 
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
+
   if (!API_KEY) {
     console.error("❌ Missing SCRAPERAPI_KEY");
     return [];
   }
 
-  // Base Indeed search
-  const BASE_URL =
+  // Broader aviation/aircraft search
+  const targetURL =
     "https://ph.indeed.com/jobs?q=aviation+tourism+guide+QA+support+tech+OR+aircraft+OR+avionics+OR+technician+OR+mechanic+IT+developer+OR+engineer&l=Philippines";
-  // CHANGE THIS NUMBER TO SCRAPE MORE PAGES (1 page ≈ 10–15 jobs)
-  const pagesToScrape = 2; 
 
-  const allJobs = [];
+  const scraperURL =
+    `https://api.scraperapi.com?api_key=${API_KEY}&url=` +
+    encodeURIComponent(targetURL);
 
-  console.log(`✈ [SCRAPER] Scraping Indeed (${pagesToScrape} pages)…`);
+  console.log("✈ [SCRAPER] Fetching Indeed via ScraperAPI…");
 
-  for (let i = 0; i < pagesToScrape; i++) {
-    const start = i * 10; // pagination
-    const pageURL = `${BASE_URL}&start=${start}`;
+  let response;
+  try {
+    response = await axios.get(scraperURL, {
+      timeout: 30000,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Accept: "text/html",
+      },
+    });
+  } catch (err) {
+    console.error("❌ [SCRAPER ERROR] Fetch failed:", err.message);
+    return [];
+  }
 
-    console.log(`📄 Scraping page ${i + 1}: ${pageURL}`);
+  const html = response.data;
+  const $ = cheerio.load(html);
+  const jobs = [];
 
-    const scraperURL =
-      `https://api.scraperapi.com?api_key=${API_KEY}&url=` +
-      encodeURIComponent(pageURL);
+  // MAIN selector (typical Indeed layout)
+  $(".job_seen_beacon").each((_, el) => {
+    const title =
+      $(el).find("h2 a").text().trim() ||
+      $(el).find("h2 span").text().trim();
 
-    let response;
-    try {
-      response = await axios.get(scraperURL, {
-        timeout: 30000,
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          Accept: "text/html",
-        },
-      });
-    } catch (err) {
-      console.error(`❌ Failed to fetch page ${i + 1}:`, err.message);
-      continue;
+    const company =
+      $(el).find(".companyName").text().trim() ||
+      $(el).find(".company_location").text().trim();
+
+    const location =
+      $(el).find(".companyLocation").text().trim() ||
+      $(el).find(".company_location").text().trim();
+
+    const linkRaw = $(el).find("h2 a").attr("href") || "";
+    const link = linkRaw.startsWith("http")
+      ? linkRaw
+      : "https://ph.indeed.com" + linkRaw;
+
+    if (title && company) {
+      jobs.push({ title, company, location, link });
     }
+  });
 
-    const html = response.data;
-    const $ = cheerio.load(html);
+  // FALLBACK selector (alternative Indeed card layout)
+  $("a.tapItem").each((_, el) => {
+    const title = $(el).find(".jobTitle>span").text().trim();
+    const company = $(el).find(".companyName").text().trim();
+    const location = $(el).find(".companyLocation").text().trim();
+    const linkRaw = $(el).attr("href");
 
-    // MAIN selector
-    $(".job_seen_beacon").each((_, el) => {
-      const title =
-        $(el).find("h2 a").text().trim() ||
-        $(el).find("h2 span").text().trim();
-
-      const company =
-        $(el).find(".companyName").text().trim() ||
-        $(el).find(".company_location").text().trim();
-
-      const location =
-        $(el).find(".companyLocation").text().trim() ||
-        $(el).find(".company_location").text().trim();
-
-      const linkRaw = $(el).find("h2 a").attr("href") || "";
+    if (title && company) {
       const link = linkRaw.startsWith("http")
         ? linkRaw
         : "https://ph.indeed.com" + linkRaw;
 
-      if (title && company) allJobs.push({ title, company, location, link });
-    });
-
-    // FALLBACK selector
-    $("a.tapItem").each((_, el) => {
-      const title = $(el).find(".jobTitle>span").text().trim();
-      const company = $(el).find(".companyName").text().trim();
-      const location = $(el).find(".companyLocation").text().trim();
-      const linkRaw = $(el).attr("href") || "";
-
-      if (title && company) {
-        const link = linkRaw.startsWith("http")
-          ? linkRaw
-          : "https://ph.indeed.com" + linkRaw;
-
-        allJobs.push({ title, company, location, link });
-      }
-    });
-  }
+      jobs.push({ title, company, location, link });
+    }
+  });
 
   // Deduplicate
   const unique = [];
   const seen = new Set();
-
-  for (const j of allJobs) {
+  for (const j of jobs) {
     const key = j.title + "|" + j.company;
     if (!seen.has(key)) {
       seen.add(key);
@@ -99,7 +91,7 @@ async function scrapeAviationJobs() {
     }
   }
 
-  console.log(`✔ [SCRAPER] Total extracted jobs: ${unique.length}`);
+  console.log(`✔ [SCRAPER] Extracted ${unique.length} aviation jobs`);
 
   return unique;
 }

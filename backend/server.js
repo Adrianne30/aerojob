@@ -64,19 +64,6 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
 // ---------------------------------------------------------------------------------
-// CSP HEADER
-// ---------------------------------------------------------------------------------
-
-res.setHeader(
-  "Content-Security-Policy",
-  "default-src 'self'; " +
-    "connect-src 'self' https://aerojob.space https://api.aerojob.space https://aerojob-backend-production.up.railway.app https://mycareers.ph; " +
-    "img-src 'self' data: blob: https://aerojob-backend-production.up.railway.app; " +
-    "style-src 'self' 'unsafe-inline'; " +
-    "script-src 'self' 'unsafe-inline';"
-);
-
-// ---------------------------------------------------------------------------------
 // BODY & COOKIE
 // ---------------------------------------------------------------------------------
 
