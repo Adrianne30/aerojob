@@ -3,14 +3,6 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 
-/**
- * Scrape aviation-related careers using ScraperAPI → Indeed PH
- * This version:
- *  ✔ Extracts more selectors
- *  ✔ Handles Indeed HTML variations
- *  ✔ Avoids empty fields
- *  ✔ Ensures 12–20 results usually
- */
 async function scrapeAviationJobs() {
   const API_KEY = process.env.SCRAPERAPI_KEY;
 
