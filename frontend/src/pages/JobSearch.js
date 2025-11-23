@@ -218,17 +218,21 @@ export default function Jobs() {
           </div>
         </div>
         
-      <button
+            <button
         onClick={async () => {
+          setLoading(true);
+
           const res = await fetch(
             "https://aerojob-backend-production.up.railway.app/api/jobs/scrape"
           ).then(r => r.json());
+
+          setLoading(false);
 
           console.log(res);
           alert("Scraped " + (res.found || 0) + " jobs!");
         }}
       >
-        🔄 Scrape Aviation Jobs
+        {loading ? "🔄 Scraping…" : "🔄 Scrape Jobs"}
       </button>
 
 
