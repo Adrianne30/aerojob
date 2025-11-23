@@ -12,10 +12,9 @@ async function scrapeAviationJobs() {
 
   // Base Indeed search
   const BASE_URL =
-    "https://ph.indeed.com/jobs?q=aviation+OR+aircraft+OR+avionics+OR+technician+OR+mechanic+OR+engineer&l=Philippines";
-
+    "https://ph.indeed.com/jobs?q=aviation+tourism+guide+QA+support+tech+OR+aircraft+OR+avionics+OR+technician+OR+mechanic+IT+developer+OR+engineer&l=Philippines";
   // CHANGE THIS NUMBER TO SCRAPE MORE PAGES (1 page ≈ 10–15 jobs)
-  const pagesToScrape = 2; // 👈 5 pages ≈ 50–75 jobs
+  const pagesToScrape = 2; 
 
   const allJobs = [];
 
