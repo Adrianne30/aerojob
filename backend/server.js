@@ -460,18 +460,49 @@ async function scrapeAviationJobs({ q = "aviation", html, htmlBase64 }) {
 }
 
 
-/* ----------------------------- SCRAPER ROUTE ---------------------------- */
+/* ------------------------- SCRAPER API ROUTE ------------------------- */
+const scrapeAviationJobs = require("./scraper/scraper"); // <--- update path if needed
 
-api.post("/jobs/scrape", asyncH(async (req, res) => {
-  const result = await scrapeAviationJobs({
-    q: req.body.q,
-    html: req.body.html,
-    htmlBase64: req.body.htmlBase64
-  });
+api.get(
+  "/jobs/scrape",
+  asyncH(async (req, res) => {
+    try {
+      const scraped = await scrapeAviationJobs();
 
-  return res.json(result);
-}));
+      // Insert into DB (avoid duplicates)
+      let created = 0;
+      for (const job of scraped) {
+        const exists = await Job.findOne({
+          title: job.title,
+          companyName: job.company,
+        });
 
+        if (!exists) {
+          await Job.create({
+            title: job.title,
+            description: "Scraped aviation job posting.",
+            companyName: job.company,
+            location: job.location,
+            link: job.link,
+            status: "active",
+            isApproved: true,
+          });
+          created++;
+        }
+      }
+
+      res.json({
+        ok: true,
+        found: scraped.length,
+        saved: created,
+        preview: scraped.slice(0, 10),
+      });
+    } catch (err) {
+      console.error("SCRAPER ROUTE ERROR:", err.message);
+      res.status(500).json({ ok: false, error: "Backend scrape failed" });
+    }
+  })
+);
 
 
 /* ----------------------------- STANDARD JOB ROUTES ---------------------------- */
