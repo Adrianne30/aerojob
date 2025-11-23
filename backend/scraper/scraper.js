@@ -17,7 +17,7 @@ async function scrapeAviationJobs(maxPages = 5) {
   let allJobs = [];
 
   for (let page = 0; page < maxPages; page++) {
-    const start = page * 10;
+    const start = page * 5;
     const pageURL = `${BASE_URL}&start=${start}`;
 
     console.log(`📄 Scraping page ${page + 1}: ${pageURL}`);
